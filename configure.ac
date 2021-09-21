@@ -40,6 +40,23 @@ AC_ARG_VAR(DEFAULT_CRYPT_ALGO, [The default crypt algorithm if one not found in 
 AS_IF([test "x$DEFAULT_CRYPT_ALGO" == "x"], [DEFAULT_CRYPT_ALGO="1"])
 AC_DEFINE_UNQUOTED([DEFAULT_CRYPT_ALGO], ["$DEFAULT_CRYPT_ALGO"], [The default crypt algorithm if one not found in shadow])
 
+AC_ARG_VAR(MIN_UCASE_CHRS, [Minimum number of upper case characters in the password])
+AS_IF([test "x$MIN_UCASE_CHRS" == "x"], [MIN_UCASE_CHRS=1])
+AC_DEFINE_UNQUOTED([MIN_UCASE_CHRS], [$MIN_UCASE_CHRS], [Minimum number of upper case characters in the password])
+
+AC_ARG_VAR(MIN_LCASE_CHRS, [Minimum number of lower case characters in the password])
+AS_IF([test "x$MIN_LCASE_CHRS" == "x"], [MIN_LCASE_CHRS=1])
+AC_DEFINE_UNQUOTED([MIN_LCASE_CHRS], [$MIN_LCASE_CHRS], [Minimum number of lower case characters in the password])
+
+AC_ARG_VAR(MIN_DIGITS, [Minimum number of digits in the password])
+AS_IF([test "x$MIN_DIGITS" == "x"], [MIN_DIGITS=1])
+AC_DEFINE_UNQUOTED([MIN_DIGITS], [$MIN_DIGITS], [Minimum number of digits in the password])
+
+AC_ARG_VAR(MIN_PASSWORD_LENGTH, [Minimum length of the password])
+AS_IF([test "x$MIN_PASSWORD_LENGTH" == "x"], [MIN_PASSWORD_LENGTH=8])
+AC_DEFINE_UNQUOTED([MIN_PASSWORD_LENGTH], [$MIN_PASSWORD_LENGTH], [Min password length])
+
+
 # Check/set gtest specific functions.
 AX_PTHREAD([GTEST_CPPFLAGS="-DGTEST_HAS_PTHREAD=1"],[GTEST_CPPFLAGS="-DGTEST_HAS_PTHREAD=0"])
 AC_SUBST(GTEST_CPPFLAGS)
