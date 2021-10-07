@@ -60,18 +60,19 @@ static constexpr int success = 0;
 static constexpr int failure = -1;
 
 // pam modules related
-static constexpr const char* pamTally2 = "pam_tally2.so";
-static constexpr const char* pamCrackLib = "pam_cracklib.so";
-static constexpr const char* pamPWHistory = "pam_pwhistory.so";
-static constexpr const char* minPasswdLenProp = "minlen";
-static constexpr const char* remOldPasswdCount = "remember";
-static constexpr const char* maxFailedAttempt = "deny";
-static constexpr const char* unlockTimeout = "unlock_time";
-static constexpr const char* pamPasswdConfigFile = "/etc/pam.d/common-password";
-static constexpr const char* pamAuthConfigFile = "/etc/pam.d/common-auth";
-static constexpr const char* minLcaseCharsProp = "lcredit";
-static constexpr const char* minUcaseCharsProp = "ucredit";
-static constexpr const char* minDigitProp = "dcredit";
+static constexpr const char *pamTally2 = "pam_tally2.so";
+static constexpr const char *pamCrackLib = "pam_cracklib.so";
+static constexpr const char *pamPWHistory = "pam_pwhistory.so";
+static constexpr const char *minPasswdLenProp = "minlen";
+static constexpr const char *remOldPasswdCount = "remember";
+static constexpr const char *maxFailedAttempt = "deny";
+static constexpr const char *unlockTimeout = "unlock_time";
+static constexpr const char *rootUnlockTimeout = "root_unlock_time";
+static constexpr const char *pamPasswdConfigFile = "/etc/pam.d/common-password";
+static constexpr const char *pamAuthConfigFile = "/etc/pam.d/common-auth";
+static constexpr const char *minLcaseCharsProp = "lcredit";
+static constexpr const char *minUcaseCharsProp = "ucredit";
+static constexpr const char *minDigitProp = "dcredit";
 
 // Object Manager related
 static constexpr const char* ldapMgrObjBasePath =
@@ -136,20 +137,17 @@ static std::string getCSVFromVector(std::vector<std::string> vec)
 {
     switch (vec.size())
     {
-        case 0:
-        {
+        case 0: {
             return "";
         }
         break;
 
-        case 1:
-        {
+        case 1: {
             return std::string{vec[0]};
         }
         break;
 
-        default:
-        {
+        default: {
             return std::accumulate(
                 std::next(vec.begin()), vec.end(), vec[0],
                 [](std::string a, std::string b) { return a + ',' + b; });
@@ -519,6 +517,7 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
         log<level::ERR>("Unable to set accountUnlockTimeout");
         elog<InternalFailure>();
     }
+
     return AccountPolicyIface::accountUnlockTimeout(value);
 }
 
@@ -1251,12 +1250,13 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
                             entry("WHAT=%s", e.what()));
             throw;
         }
+
         AccountPolicyIface::maxLoginAttemptBeforeLockout(value16);
     }
     valueStr.clear();
     if (getPamModuleArgValue(pamTally2, unlockTimeout, valueStr) != success)
     {
-        AccountPolicyIface::accountUnlockTimeout(0);
+        AccountPolicyIface::accountUnlockTimeout(ACCOUNT_UNLOCK_TIMEOUT);
     }
     else
     {
@@ -1269,6 +1269,10 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
                 throw std::out_of_range("Out of range");
             }
             value32 = static_cast<decltype(value32)>(tmp);
+
+            value32 = (value32 < ACCOUNT_UNLOCK_TIMEOUT)
+                          ? ACCOUNT_UNLOCK_TIMEOUT
+                          : value32;
         }
         catch (const std::exception& e)
         {
