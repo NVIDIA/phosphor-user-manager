@@ -511,10 +511,23 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
     {
         return value;
     }
+
+    if (value < ACCOUNT_UNLOCK_TIMEOUT)
+    {
+        return value;
+    }
+
     if (setPamModuleArgValue(pamTally2, unlockTimeout, std::to_string(value)) !=
         success)
     {
         log<level::ERR>("Unable to set accountUnlockTimeout");
+        elog<InternalFailure>();
+    }
+
+    if (setPamModuleArgValue(pamTally2, rootUnlockTimeout,
+                             std::to_string(value)) != success)
+    {
+        log<level::ERR>("Unable to set root accountUnlockTimeout");
         elog<InternalFailure>();
     }
 
@@ -1256,7 +1269,7 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
     valueStr.clear();
     if (getPamModuleArgValue(pamTally2, unlockTimeout, valueStr) != success)
     {
-        AccountPolicyIface::accountUnlockTimeout(ACCOUNT_UNLOCK_TIMEOUT);
+        accountUnlockTimeout(ACCOUNT_UNLOCK_TIMEOUT);
     }
     else
     {
@@ -1280,7 +1293,7 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
                             entry("WHAT=%s", e.what()));
             throw;
         }
-        AccountPolicyIface::accountUnlockTimeout(value32);
+        accountUnlockTimeout(value32);
     }
 
     // Don't consume all the configuratios if the sum of all other
