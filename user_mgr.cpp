@@ -54,21 +54,25 @@ static constexpr size_t ipmiMaxUsers = 15;
 static constexpr size_t ipmiMaxUserNameLen = 16;
 static constexpr size_t systemMaxUserNameLen = 30;
 static constexpr size_t maxSystemUsers = 30;
-static constexpr const char* grpSsh = "ssh";
-static constexpr uint8_t minPasswdLength = 8;
+static constexpr const char *grpSsh = "ssh";
+static constexpr uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
 static constexpr int success = 0;
 static constexpr int failure = -1;
 
 // pam modules related
-static constexpr const char* pamTally2 = "pam_tally2.so";
-static constexpr const char* pamCrackLib = "pam_cracklib.so";
-static constexpr const char* pamPWHistory = "pam_pwhistory.so";
-static constexpr const char* minPasswdLenProp = "minlen";
-static constexpr const char* remOldPasswdCount = "remember";
-static constexpr const char* maxFailedAttempt = "deny";
-static constexpr const char* unlockTimeout = "unlock_time";
-static constexpr const char* pamPasswdConfigFile = "/etc/pam.d/common-password";
-static constexpr const char* pamAuthConfigFile = "/etc/pam.d/common-auth";
+static constexpr const char *pamTally2 = "pam_tally2.so";
+static constexpr const char *pamCrackLib = "pam_cracklib.so";
+static constexpr const char *pamPWHistory = "pam_pwhistory.so";
+static constexpr const char *minPasswdLenProp = "minlen";
+static constexpr const char *remOldPasswdCount = "remember";
+static constexpr const char *maxFailedAttempt = "deny";
+static constexpr const char *unlockTimeout = "unlock_time";
+static constexpr const char *rootUnlockTimeout = "root_unlock_time";
+static constexpr const char *pamPasswdConfigFile = "/etc/pam.d/common-password";
+static constexpr const char *pamAuthConfigFile = "/etc/pam.d/common-auth";
+static constexpr const char *minLcaseCharsProp = "lcredit";
+static constexpr const char *minUcaseCharsProp = "ucredit";
+static constexpr const char *minDigitProp = "dcredit";
 
 // Object Manager related
 static constexpr const char* ldapMgrObjBasePath =
@@ -133,20 +137,17 @@ static std::string getCSVFromVector(std::vector<std::string> vec)
 {
     switch (vec.size())
     {
-        case 0:
-        {
+        case 0: {
             return "";
         }
         break;
 
-        case 1:
-        {
+        case 1: {
             return std::string{vec[0]};
         }
         break;
 
-        default:
-        {
+        default: {
             return std::accumulate(
                 std::next(vec.begin()), vec.end(), vec[0],
                 [](std::string a, std::string b) { return a + ',' + b; });
@@ -510,12 +511,26 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
     {
         return value;
     }
+
+    if (value < ACCOUNT_UNLOCK_TIMEOUT)
+    {
+        return value;
+    }
+
     if (setPamModuleArgValue(pamTally2, unlockTimeout, std::to_string(value)) !=
         success)
     {
         log<level::ERR>("Unable to set accountUnlockTimeout");
         elog<InternalFailure>();
     }
+
+    if (setPamModuleArgValue(pamTally2, rootUnlockTimeout,
+                             std::to_string(value)) != success)
+    {
+        log<level::ERR>("Unable to set root accountUnlockTimeout");
+        elog<InternalFailure>();
+    }
+
     return AccountPolicyIface::accountUnlockTimeout(value);
 }
 
@@ -1172,7 +1187,8 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
     std::sort(groupsMgr.begin(), groupsMgr.end());
     UserMgrIface::allGroups(groupsMgr);
     std::string valueStr;
-    auto value = minPasswdLength;
+    auto pwdLength = minPasswdLength;
+    auto value = 0;
     unsigned long tmp = 0;
     if (getPamModuleArgValue(pamCrackLib, minPasswdLenProp, valueStr) !=
         success)
@@ -1188,7 +1204,7 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
             {
                 throw std::out_of_range("Out of range");
             }
-            value = static_cast<decltype(value)>(tmp);
+            pwdLength = static_cast<decltype(pwdLength)>(tmp);
         }
         catch (const std::exception& e)
         {
@@ -1196,7 +1212,7 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
                             entry("WHAT=%s", e.what()));
             throw;
         }
-        AccountPolicyIface::minPasswordLength(value);
+        AccountPolicyIface::minPasswordLength(pwdLength);
     }
     valueStr.clear();
     if (getPamModuleArgValue(pamPWHistory, remOldPasswdCount, valueStr) !=
@@ -1247,12 +1263,13 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
                             entry("WHAT=%s", e.what()));
             throw;
         }
+
         AccountPolicyIface::maxLoginAttemptBeforeLockout(value16);
     }
     valueStr.clear();
     if (getPamModuleArgValue(pamTally2, unlockTimeout, valueStr) != success)
     {
-        AccountPolicyIface::accountUnlockTimeout(0);
+        accountUnlockTimeout(ACCOUNT_UNLOCK_TIMEOUT);
     }
     else
     {
@@ -1265,6 +1282,10 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
                 throw std::out_of_range("Out of range");
             }
             value32 = static_cast<decltype(value32)>(tmp);
+
+            value32 = (value32 < ACCOUNT_UNLOCK_TIMEOUT)
+                          ? ACCOUNT_UNLOCK_TIMEOUT
+                          : value32;
         }
         catch (const std::exception& e)
         {
@@ -1272,8 +1293,48 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
                             entry("WHAT=%s", e.what()));
             throw;
         }
-        AccountPolicyIface::accountUnlockTimeout(value32);
+        accountUnlockTimeout(value32);
     }
+
+    // Don't consume all the configuratios if the sum of all other
+    // chars is greater then the min password length.
+    if (pwdLength > (MIN_LCASE_CHRS + MIN_UCASE_CHRS + MIN_DIGITS))
+    {
+        int val =
+            (MIN_LCASE_CHRS * (-1)); // value shoukd be in negative to tell the
+                                     // minimum number of digits required
+        if (val > 0 || MIN_LCASE_CHRS > std::numeric_limits<uint8_t>::max() ||
+            setPamModuleArgValue(pamCrackLib, minLcaseCharsProp,
+                                 std::to_string(val)) != success)
+        {
+            log<level::ERR>("Unable to set minLowercase characters",
+                            entry("MIN_LCASE_CHRS=%d", MIN_LCASE_CHRS));
+        }
+        val = (MIN_UCASE_CHRS * (-1));
+
+        if (val > 0 || MIN_UCASE_CHRS > std::numeric_limits<uint8_t>::max() ||
+            setPamModuleArgValue(pamCrackLib, minUcaseCharsProp,
+                                 std::to_string(val)) != success)
+        {
+            log<level::ERR>("Unable to set minUppercase characters",
+                            entry("MIN_UCASE_CHRS=%d", MIN_UCASE_CHRS));
+        }
+        val = (MIN_DIGITS * (-1));
+        if (val > 0 || MIN_DIGITS > std::numeric_limits<uint8_t>::max() ||
+            setPamModuleArgValue(pamCrackLib, minDigitProp,
+                                 std::to_string(val)) != success)
+        {
+            log<level::ERR>("Unable to set mindigit",
+                            entry("MIN_DIGITS=%d", MIN_DIGITS));
+        }
+    }
+    else
+    {
+
+        log<level::ERR>("Min password length should be >= sum of "
+                        "lowercase, uppercase, digits");
+    }
+
     initUserObjects();
 
     // emit the signal
