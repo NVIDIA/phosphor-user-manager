@@ -54,25 +54,25 @@ static constexpr size_t ipmiMaxUsers = 15;
 static constexpr size_t ipmiMaxUserNameLen = 16;
 static constexpr size_t systemMaxUserNameLen = 30;
 static constexpr size_t maxSystemUsers = 30;
-static constexpr const char *grpSsh = "ssh";
+static constexpr const char* grpSsh = "ssh";
 static constexpr uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
 static constexpr int success = 0;
 static constexpr int failure = -1;
 
 // pam modules related
-static constexpr const char *pamTally2 = "pam_tally2.so";
-static constexpr const char *pamCrackLib = "pam_cracklib.so";
-static constexpr const char *pamPWHistory = "pam_pwhistory.so";
-static constexpr const char *minPasswdLenProp = "minlen";
-static constexpr const char *remOldPasswdCount = "remember";
-static constexpr const char *maxFailedAttempt = "deny";
-static constexpr const char *unlockTimeout = "unlock_time";
-static constexpr const char *rootUnlockTimeout = "root_unlock_time";
-static constexpr const char *pamPasswdConfigFile = "/etc/pam.d/common-password";
-static constexpr const char *pamAuthConfigFile = "/etc/pam.d/common-auth";
-static constexpr const char *minLcaseCharsProp = "lcredit";
-static constexpr const char *minUcaseCharsProp = "ucredit";
-static constexpr const char *minDigitProp = "dcredit";
+static constexpr const char* pamTally2 = "pam_tally2.so";
+static constexpr const char* pamCrackLib = "pam_cracklib.so";
+static constexpr const char* pamPWHistory = "pam_pwhistory.so";
+static constexpr const char* minPasswdLenProp = "minlen";
+static constexpr const char* remOldPasswdCount = "remember";
+static constexpr const char* maxFailedAttempt = "deny";
+static constexpr const char* unlockTimeout = "unlock_time";
+static constexpr const char* rootUnlockTimeout = "root_unlock_time";
+static constexpr const char* pamPasswdConfigFile = "/etc/pam.d/common-password";
+static constexpr const char* pamAuthConfigFile = "/etc/pam.d/common-auth";
+static constexpr const char* minLcaseCharsProp = "lcredit";
+static constexpr const char* minUcaseCharsProp = "ucredit";
+static constexpr const char* minDigitProp = "dcredit";
 
 // Object Manager related
 static constexpr const char* ldapMgrObjBasePath =
@@ -137,17 +137,20 @@ static std::string getCSVFromVector(std::vector<std::string> vec)
 {
     switch (vec.size())
     {
-        case 0: {
+        case 0:
+        {
             return "";
         }
         break;
 
-        case 1: {
+        case 1:
+        {
             return std::string{vec[0]};
         }
         break;
 
-        default: {
+        default:
+        {
             return std::accumulate(
                 std::next(vec.begin()), vec.end(), vec[0],
                 [](std::string a, std::string b) { return a + ',' + b; });
@@ -321,10 +324,12 @@ void UserMgr::createUser(std::string userName,
     }
     try
     {
+        // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
+        // 1970-01-01, that's an implementation-defined behavior
         executeCmd("/usr/sbin/useradd", userName.c_str(), "-G", groups.c_str(),
                    "-m", "-N", "-s",
                    (sshRequested ? "/bin/sh" : "/bin/nologin"), "-e",
-                   (enabled ? "" : "1970-01-02"));
+                   (enabled ? "" : "1970-01-01"));
     }
     catch (const InternalFailure& e)
     {
@@ -664,8 +669,10 @@ void UserMgr::userEnable(const std::string& userName, bool enabled)
     throwForUserDoesNotExist(userName);
     try
     {
+        // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
+        // 1970-01-01, that's an implementation-defined behavior
         executeCmd("/usr/sbin/usermod", userName.c_str(), "-e",
-                   (enabled ? "" : "1970-01-02"));
+                   (enabled ? "" : "1970-01-01"));
     }
     catch (const InternalFailure& e)
     {
@@ -1269,7 +1276,15 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
     valueStr.clear();
     if (getPamModuleArgValue(pamTally2, unlockTimeout, valueStr) != success)
     {
-        accountUnlockTimeout(ACCOUNT_UNLOCK_TIMEOUT);
+        try
+        {
+            accountUnlockTimeout(ACCOUNT_UNLOCK_TIMEOUT);
+        }
+        catch (const std::exception& e)
+        {
+            log<level::ERR>("Exception for AccountUnlockTimeout",
+                            entry("WHAT=%s", e.what()));
+        }
     }
     else
     {
