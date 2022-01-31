@@ -1,0 +1,34 @@
+option('tests',
+    type: 'feature',
+    description: 'Build tests',
+    value: 'enabled')
+
+option('MIN_UCASE_CHRS',
+    type: 'integer',
+    value: 1,
+    description: 'Minimum number of upper case characters in the password',
+)
+
+option('MIN_LCASE_CHRS',
+    type: 'integer',
+    value: 1,
+    description: 'Minimum number of lower case characters in the password',
+)
+
+option('MIN_DIGITS',
+    type: 'integer',
+    value: 1,
+    description: 'Minimum number of digits in the password',
+)
+
+option('MIN_PASSWORD_LENGTH',
+    type: 'integer',
+    value: 1,
+    description: 'Min password Length',
+)
+
+option('ACCOUNT_UNLOCK_TIMEOUT',
+    type: 'integer',
+    value: 600,
+    description: 'Account unlock timeout',
+)
