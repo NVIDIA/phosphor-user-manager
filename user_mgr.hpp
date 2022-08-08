@@ -199,7 +199,8 @@ class UserMgr : public Ifaces
                                         "priv-user", "priv-noaccess"};
 
     /** @brief groups manager container */
-    std::vector<std::string> groupsMgr = {"web", "redfish", "ipmi", "ssh"};
+    std::vector<std::string> groupsMgr = {"web", "redfish", "ipmi", "ssh",
+                                          "redfish-hostiface"};
 
     /** @brief map container to hold users object */
     using UserName = std::string;
