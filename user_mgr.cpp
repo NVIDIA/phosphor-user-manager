@@ -356,9 +356,16 @@ void UserMgr::deleteUser(std::string userName)
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
+    if (userName == "root")
+    {
+        log<level::ERR>("User delete failed",
+                        entry("USER_NAME=%s", userName.c_str()));
+        elog<InternalFailure>();
+        return;
+    }
     try
     {
-        executeCmd("/usr/sbin/userdel", userName.c_str(), "-r");
+        executeCmd("/usr/sbin/deluser", userName.c_str(), "--remove-home");
     }
     catch (const InternalFailure& e)
     {
