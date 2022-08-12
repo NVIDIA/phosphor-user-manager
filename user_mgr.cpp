@@ -93,6 +93,9 @@ using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 using InvalidArgument =
     sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument;
+using NotAllowed =
+    sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
+using Reason = xyz::openbmc_project::Common::NotAllowed::REASON;
 using UserNameExists =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameExists;
 using UserNameDoesNotExist =
@@ -199,6 +202,19 @@ void UserMgr::throwForUserDoesNotExist(const std::string& userName)
         log<level::ERR>("User does not exist",
                         entry("USER_NAME=%s", userName.c_str()));
         elog<UserNameDoesNotExist>();
+    }
+}
+
+void UserMgr::throwForDeleteUserInServiceGroup(const std::string& userName)
+{
+    const auto& user = usersList[userName];
+    std::vector<std::string> groupLists = user.get()->userGroups();
+    if(std::find(groupLists.begin(), groupLists.end(), "service") != groupLists.end())
+    {
+        log<level::ERR>("Not allowed to delete user belongs to service group",
+                        entry("USER_NAME=%s", userName.c_str()));
+	elog<NotAllowed>(Reason("service group users are pre configured on the device"
+                                  "therefore can't be deleted"));
     }
 }
 
@@ -356,6 +372,7 @@ void UserMgr::deleteUser(std::string userName)
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
+    throwForDeleteUserInServiceGroup(userName);
     if (userName == "root")
     {
         log<level::ERR>("User delete failed",

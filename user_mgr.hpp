@@ -200,7 +200,7 @@ class UserMgr : public Ifaces
 
     /** @brief groups manager container */
     std::vector<std::string> groupsMgr = {"web", "redfish", "ipmi", "ssh",
-                                          "redfish-hostiface"};
+                                          "redfish-hostiface", "service"};
 
     /** @brief map container to hold users object */
     using UserName = std::string;
@@ -237,6 +237,13 @@ class UserMgr : public Ifaces
      *  @param[in] userName - name of the user
      */
     void throwForUserDoesNotExist(const std::string& userName);
+
+    /** @brief check if user is belongs to "service" group
+     *  method to check whether user is in "service" group and throw if yes.
+     *
+     *  @param[in] userName - name of the user
+     */
+    void throwForDeleteUserInServiceGroup(const std::string& userName);
 
     /** @brief check user does not exist
      *  method to check whether does not exist, and throw if exists.
