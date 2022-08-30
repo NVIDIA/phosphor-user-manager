@@ -62,9 +62,13 @@ conf_data.set('MIN_LCASE_CHRS', get_option('MIN_LCASE_CHRS'))
 
 conf_data.set('MIN_DIGITS', get_option('MIN_DIGITS'))
 
-conf_data.set('MIN_PASSWORD_LENGTH',  get_option('MIN_PASSWORD_LENGTH'))
+conf_data.set('MIN_SPEC_CHRS', get_option('MIN_SPEC_CHRS'))
+
+conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'))
 
 conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
+
+conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'))
 
 conf_header = configure_file(output: 'config.h',
     configuration: conf_data)

@@ -324,13 +324,39 @@ class UserMgr : public Ifaces
     int getPamModuleArgValue(const std::string& moduleName,
                              const std::string& argName, std::string& argValue);
 
+    /** @brief set pam arguments values
+     *  method to set argument value in pam configuration for multiple arguments
+     *
+     *  @param[in] moduleName - name of the module in which argument value has
+     *  to be set
+     *  @param[in] args - argument name / value map, in which the argument name
+     *  is used as the key and value is a string
+     *
+     *  @return 0 - success state of the function
+     */
+    int setPamModuleArgValue(const std::string& moduleName,
+                             const std::map<std::string, std::string>& args);
+
+    /** @brief set pam arguments values
+     *  method to set argument value in pam configuration for multiple arguments
+     *
+     *  @param[in] moduleName - name of the module in which argument value has
+     *  to be set
+     *  @param[in] args - argument name / value map, in which the argument name
+     *  is used as the key and value is an integer
+     *
+     *  @return 0 - success state of the function
+     */
+    int setPamModuleArgValue(const std::string& moduleName,
+                             const std::map<std::string, int>& args);
+
     /** @brief set pam argument value
      *  method to set argument value in pam configuration
      *
      *  @param[in] moduleName - name of the module in which argument value has
-     * to be set
+     *  to be set
      *  @param[in] argName - argument name
-     *  @param[out] argValue - argument value
+     *  @param[in] argValue - argument value with type string
      *
      *  @return 0 - success state of the function
      */

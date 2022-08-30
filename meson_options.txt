@@ -21,6 +21,12 @@ option('MIN_DIGITS',
     description: 'Minimum number of digits in the password',
 )
 
+option('MIN_SPEC_CHRS',
+    type: 'integer',
+    value: 1,
+    description: 'Minimum number of special characters in the password',
+)
+
 option('MIN_PASSWORD_LENGTH',
     type: 'integer',
     value: 1,
@@ -31,4 +37,10 @@ option('ACCOUNT_UNLOCK_TIMEOUT',
     type: 'integer',
     value: 600,
     description: 'Account unlock timeout',
+)
+
+option('MAX_FAILED_LOGIN_ATTEMPTS',
+    type: 'integer',
+    value: 0,
+    description: 'Maximum number of failed login attempts',
 )

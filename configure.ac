@@ -52,6 +52,10 @@ AC_ARG_VAR(MIN_DIGITS, [Minimum number of digits in the password])
 AS_IF([test "x$MIN_DIGITS" == "x"], [MIN_DIGITS=1])
 AC_DEFINE_UNQUOTED([MIN_DIGITS], [$MIN_DIGITS], [Minimum number of digits in the password])
 
+AC_ARG_VAR(MIN_SPEC_CHRS, [Minimum number of special characters in the password])
+AS_IF([test "x$MIN_SPEC_CHRS" == "x"], [MIN_SPEC_CHRS=1])
+AC_DEFINE_UNQUOTED([MIN_SPEC_CHRS], [$MIN_SPEC_CHRS], [Minimum number of special characters in the password])
+
 AC_ARG_VAR(MIN_PASSWORD_LENGTH, [Minimum length of the password])
 AS_IF([test "x$MIN_PASSWORD_LENGTH" == "x"], [MIN_PASSWORD_LENGTH=8])
 AC_DEFINE_UNQUOTED([MIN_PASSWORD_LENGTH], [$MIN_PASSWORD_LENGTH], [Min password length])
@@ -60,6 +64,9 @@ AC_ARG_VAR(ACCOUNT_UNLOCK_TIMEOUT, [Account unlock timeout])
 AS_IF([test "x$ACCOUNT_UNLOCK_TIMEOUT" == "x"], [ACCOUNT_UNLOCK_TIMEOUT=600])
 AC_DEFINE_UNQUOTED([ACCOUNT_UNLOCK_TIMEOUT], [$ACCOUNT_UNLOCK_TIMEOUT], [Account unlock timeout])
 
+AC_ARG_VAR(MAX_FAILED_LOGIN_ATTEMPTS, [Maximum number of failed login attempts])
+AS_IF([test "x$MAX_FAILED_LOGIN_ATTEMPTS" == "x"], [MAX_FAILED_LOGIN_ATTEMPTS=0])
+AC_DEFINE_UNQUOTED([MAX_FAILED_LOGIN_ATTEMPTS], [$MAX_FAILED_LOGIN_ATTEMPTS], [Maximum number of failed login attempts])
 
 # Check/set gtest specific functions.
 AX_PTHREAD([GTEST_CPPFLAGS="-DGTEST_HAS_PTHREAD=1"],[GTEST_CPPFLAGS="-DGTEST_HAS_PTHREAD=0"])
