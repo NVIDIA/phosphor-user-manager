@@ -885,6 +885,26 @@ size_t UserMgr::getIpmiUsersCount()
     return userList.size();
 }
 
+std::vector<std::string> UserMgr::allGroups() const
+{
+    std::vector<std::string> userGroups;
+    /*The "redfish-hostiface" group can only be used by BIOS/HOST
+     * with Get BootStrap Credentials IPMI command to create a HI user.
+     * And it must not be used for creating local user either with
+     * IPMITOOL set user command or Redfish AccountService schema.
+     * Therefore, block the "redfish-hostiface" group from
+     * "AllGroups" DBus property.
+     */
+    for (const auto& group : groupsMgr)
+    {
+        if (group.compare("redfish-hostiface"))
+        {
+            userGroups.push_back(group);
+        }
+    }
+    return userGroups;
+}
+
 bool UserMgr::isUserEnabled(const std::string& userName)
 {
     // All user management lock has to be based on /etc/shadow

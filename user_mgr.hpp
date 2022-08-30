@@ -187,6 +187,14 @@ class UserMgr : public Ifaces
      **/
     UserInfoMap getUserInfo(std::string userName) override;
 
+    /** @brief returns groups info
+     * Checks for the available user groups, by which new user can be created.
+     *
+     * @param[in] - none
+     * @return -  vector of strings of user groups
+     **/
+    std::vector<std::string> allGroups() const override;
+
   private:
     /** @brief sdbusplus handler */
     sdbusplus::bus::bus& bus;
