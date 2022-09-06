@@ -895,9 +895,14 @@ std::vector<std::string> UserMgr::allGroups() const
      * Therefore, block the "redfish-hostiface" group from
      * "AllGroups" DBus property.
      */
+
+    /*The "service" group user can only be preconfigured, can't be added/deleted at runtime
+     * Therefore, block the "service" group from
+     * "AllGroups" DBus property.
+     */
     for (const auto& group : groupsMgr)
     {
-        if (group.compare("redfish-hostiface"))
+        if (group.compare("redfish-hostiface") && group.compare("service"))
         {
             userGroups.push_back(group);
         }
