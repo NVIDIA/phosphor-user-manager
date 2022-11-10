@@ -655,7 +655,7 @@ void Config::save(Archive& archive, const std::uint32_t /*version*/) const
 template <class Archive>
 void Config::load(Archive& archive, const std::uint32_t /*version*/)
 {
-    bool bVal;
+    bool bVal = false;
     archive(bVal);
     EnableIface::enabled(bVal);
 
