@@ -97,8 +97,7 @@ using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 using InvalidArgument =
     sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument;
-using NotAllowed =
-    sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
+using NotAllowed = sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
 using Reason = xyz::openbmc_project::Common::NotAllowed::REASON;
 using UserNameExists =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameExists;
@@ -213,12 +212,14 @@ void UserMgr::throwForDeleteUserInServiceGroup(const std::string& userName)
 {
     const auto& user = usersList[userName];
     std::vector<std::string> groupLists = user.get()->userGroups();
-    if(std::find(groupLists.begin(), groupLists.end(), "service") != groupLists.end())
+    if (std::find(groupLists.begin(), groupLists.end(), "service") !=
+        groupLists.end())
     {
         log<level::ERR>("Not allowed to delete user belongs to service group",
                         entry("USER_NAME=%s", userName.c_str()));
-	elog<NotAllowed>(Reason("service group users are pre configured on the device"
-                                  "therefore can't be deleted"));
+        elog<NotAllowed>(
+            Reason("service group users are pre configured on the device"
+                   "therefore can't be deleted"));
     }
 }
 
@@ -504,7 +505,8 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
         return value;
     }
     if (setPamModuleArgValue(pamCrackLib, minPasswdLengthProp,
-                             std::to_string(static_cast<int>(value))) != success)
+                             std::to_string(static_cast<int>(value))) !=
+        success)
     {
         log<level::ERR>("Unable to set minPasswordLength");
         elog<InternalFailure>();
@@ -519,7 +521,8 @@ uint8_t UserMgr::rememberOldPasswordTimes(uint8_t value)
         return value;
     }
     if (setPamModuleArgValue(pamPWHistory, remOldPasswdCount,
-                             std::to_string(static_cast<int>(value))) != success)
+                             std::to_string(static_cast<int>(value))) !=
+        success)
     {
         log<level::ERR>("Unable to set rememberOldPasswordTimes");
         elog<InternalFailure>();
@@ -538,7 +541,8 @@ uint16_t UserMgr::maxLoginAttemptBeforeLockout(uint16_t value)
         return value;
     }
     if (setPamModuleArgValue(pamTally2, maxFailedAttemptsProp,
-                             std::to_string(static_cast<int>(value))) != success)
+                             std::to_string(static_cast<int>(value))) !=
+        success)
     {
         log<level::ERR>("Unable to set maxLoginAttemptBeforeLockout");
         elog<InternalFailure>();
@@ -556,11 +560,9 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
     {
         return value;
     }
-    std::map<std::string, int> args =
-    {
-        { unlockTimeoutProp, static_cast<int>(value) },
-        { rootUnlockTimeoutProp, static_cast<int>(value) }
-    };
+    std::map<std::string, int> args = {
+        {unlockTimeoutProp, static_cast<int>(value)},
+        {rootUnlockTimeoutProp, static_cast<int>(value)}};
 
     if (setPamModuleArgValue(pamTally2, args) != success)
     {
@@ -628,10 +630,7 @@ int UserMgr::setPamModuleArgValue(const std::string& moduleName,
                                   const std::string& argName,
                                   const std::string& argValue)
 {
-    std::map<std::string, std::string> arg =
-    {
-        { argName, argValue }
-    };
+    std::map<std::string, std::string> arg = {{argName, argValue}};
 
     return setPamModuleArgValue(moduleName, arg);
 }
@@ -649,8 +648,9 @@ int UserMgr::setPamModuleArgValue(const std::string& moduleName,
     return setPamModuleArgValue(moduleName, stringArgs);
 }
 
-int UserMgr::setPamModuleArgValue(const std::string& moduleName,
-                                  const std::map<std::string, std::string>& args)
+int UserMgr::setPamModuleArgValue(
+    const std::string& moduleName,
+    const std::map<std::string, std::string>& args)
 {
     std::string fileName;
     if (moduleName == pamTally2)
@@ -698,9 +698,8 @@ int UserMgr::setPamModuleArgValue(const std::string& moduleName,
                             endPos = line.size();
                         }
                         startPos += argSearch.size();
-                        line = line.substr(0, startPos) +
-                            value +
-                            line.substr(endPos, line.size() - endPos);
+                        line = line.substr(0, startPos) + value +
+                               line.substr(endPos, line.size() - endPos);
                         found = true;
                     }
                 }
@@ -926,9 +925,9 @@ std::vector<std::string> UserMgr::allGroups() const
      * "AllGroups" DBus property.
      */
 
-    /*The "service" group user can only be preconfigured, can't be added/deleted at runtime
-     * Therefore, block the "service" group from
-     * "AllGroups" DBus property.
+    /*The "service" group user can only be preconfigured, can't be added/deleted
+     * at runtime Therefore, block the "service" group from "AllGroups" DBus
+     * property.
      */
     for (const auto& group : groupsMgr)
     {
@@ -1443,28 +1442,28 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
     if (MIN_LCASE_CHRS > std::numeric_limits<uint8_t>::max())
     {
         log<level::ERR>("Minimum number of lowercase characters in password "
-            " value too large.");
+                        " value too large.");
     }
     else if (MIN_UCASE_CHRS > std::numeric_limits<uint8_t>::max())
     {
         log<level::ERR>("Minimum number of lowercase characters in password "
-            " value too large.");
+                        " value too large.");
     }
     else if (MIN_DIGITS > std::numeric_limits<uint8_t>::max())
     {
         log<level::ERR>("Minimum number of lowercase characters in password "
-            " value too large.");
+                        " value too large.");
     }
     else if (MIN_SPEC_CHRS > std::numeric_limits<uint8_t>::max())
     {
         log<level::ERR>("Minimum number of lowercase characters in password "
-            " value too large.");
+                        " value too large.");
     }
     else if (cracklibArgs[minPasswdLengthProp] <
-        (MIN_LCASE_CHRS + MIN_UCASE_CHRS + MIN_DIGITS + MIN_SPEC_CHRS))
+             (MIN_LCASE_CHRS + MIN_UCASE_CHRS + MIN_DIGITS + MIN_SPEC_CHRS))
     {
         log<level::ERR>("Minimum password length should be >= sum of "
-            "lowercase, uppercase, digits, special characters");
+                        "lowercase, uppercase, digits, special characters");
     }
     else
     {
