@@ -382,7 +382,8 @@ void UserMgr::deleteUser(std::string userName)
     {
         log<level::ERR>("User delete failed",
                         entry("USER_NAME=%s", userName.c_str()));
-        elog<InternalFailure>();
+        elog<NotAllowed>(Reason("root user must be present by default on system"
+                                "therefore can't be deleted"));
         return;
     }
     try
