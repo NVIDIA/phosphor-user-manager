@@ -388,7 +388,7 @@ void UserMgr::deleteUser(std::string userName)
     }
     try
     {
-        executeCmd("/usr/sbin/deluser", userName.c_str(), "--remove-home");
+        executeCmd("/usr/sbin/userdel", userName.c_str(), "-r");
     }
     catch (const InternalFailure& e)
     {
