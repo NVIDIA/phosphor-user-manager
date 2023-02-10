@@ -1272,6 +1272,10 @@ void UserMgr::initUserObjects(void)
 
         for (auto& user : userNameList)
         {
+            if(user == "service")
+            {
+                continue;
+            }
             std::vector<std::string> userGroups;
             std::string userPriv;
             for (const auto& grp : groupLists)
