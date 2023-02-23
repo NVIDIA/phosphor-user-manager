@@ -28,14 +28,14 @@ using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using ConfigIface = sdbusplus::xyz::openbmc_project::User::Ldap::server::Config;
 using EnableIface = sdbusplus::xyz::openbmc_project::Object::server::Enable;
-using CreateIface = sdbusplus::server::object::object<
+using CreateIface = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::User::Ldap::server::Create>;
 namespace fs = std::filesystem;
 using MapperIface =
     sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapper;
 
 using Ifaces =
-    sdbusplus::server::object::object<ConfigIface, EnableIface, MapperIface>;
+    sdbusplus::server::object_t<ConfigIface, EnableIface, MapperIface>;
 using ObjectPath = sdbusplus::message::object_path;
 
 namespace sdbusRule = sdbusplus::bus::match::rules;
@@ -55,8 +55,8 @@ class Config : public Ifaces
     ~Config() = default;
     Config(const Config&) = delete;
     Config& operator=(const Config&) = delete;
-    Config(Config&&) = default;
-    Config& operator=(Config&&) = default;
+    Config(Config&&) = delete;
+    Config& operator=(Config&&) = delete;
 
     /** @brief Constructor to put object onto bus at a D-Bus path.
      *  @param[in] bus - Bus to attach to.
@@ -82,7 +82,7 @@ class Config : public Ifaces
      *  @param[in] parent - parent of config object.
      */
 
-    Config(sdbusplus::bus::bus& bus, const char* path, const char* filePath,
+    Config(sdbusplus::bus_t& bus, const char* path, const char* filePath,
            const char* caCertFile, const char* certFile, bool secureLDAP,
            std::string ldapServerURI, std::string ldapBindDN,
            std::string ldapBaseDN, std::string&& ldapBindDNPassword,
@@ -98,7 +98,7 @@ class Config : public Ifaces
      *              or openLDAP.
      *  @param[in] parent - parent of config object.
      */
-    Config(sdbusplus::bus::bus& bus, const char* path, const char* filePath,
+    Config(sdbusplus::bus_t& bus, const char* path, const char* filePath,
            const char* caCertFile, const char* certFile,
            ConfigIface::Type ldapType, ConfigMgr& parent);
 
@@ -257,7 +257,7 @@ class Config : public Ifaces
     std::filesystem::path configPersistPath{};
 
     /** @brief Persistent sdbusplus D-Bus bus connection. */
-    sdbusplus::bus::bus& bus;
+    sdbusplus::bus_t& bus;
 
     /** @brief Create a new LDAP config file.
      */
@@ -277,13 +277,12 @@ class Config : public Ifaces
         "priv-admin",
         "priv-operator",
         "priv-user",
-        "priv-noaccess",
     };
 
     /** @brief React to InterfaceAdded signal
      *  @param[in] msg - sdbusplus message
      */
-    void certificateInstalled(sdbusplus::message::message& msg);
+    void certificateInstalled(sdbusplus::message_t& msg);
     sdbusplus::bus::match_t certificateInstalledSignal;
 
     sdbusplus::bus::match_t cacertificateInstalledSignal;
@@ -291,7 +290,7 @@ class Config : public Ifaces
     /** @brief React to certificate changed signal
      *  @param[in] msg - sdbusplus message
      */
-    void certificateChanged(sdbusplus::message::message& msg);
+    void certificateChanged(sdbusplus::message_t& msg);
     sdbusplus::bus::match_t certificateChangedSignal;
 
     friend class MockConfigMgr;

@@ -44,3 +44,5 @@ option('MAX_FAILED_LOGIN_ATTEMPTS',
     value: 0,
     description: 'Maximum number of failed login attempts',
 )
+option('tests', type: 'feature', description: 'Build tests', value: 'enabled')
+option('root_user_mgmt', type: 'feature', description: 'Enable management of the root user', value: 'enabled')

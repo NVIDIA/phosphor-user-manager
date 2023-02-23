@@ -25,9 +25,8 @@ namespace ldap
 {
 
 constexpr auto nslcdService = "nslcd.service";
-constexpr auto nscdService = "nscd.service";
-constexpr auto LDAPscheme = "ldap";
-constexpr auto LDAPSscheme = "ldaps";
+constexpr auto ldapScheme = "ldap";
+constexpr auto ldapsScheme = "ldaps";
 constexpr auto certObjPath = "/xyz/openbmc_project/certs/client/ldap/1";
 constexpr auto certRootPath = "/xyz/openbmc_project/certs/client/ldap";
 constexpr auto authObjPath = "/xyz/openbmc_project/certs/authority/ldap";
@@ -49,7 +48,7 @@ using Key = std::string;
 using Val = std::string;
 using ConfigInfo = std::map<Key, Val>;
 
-Config::Config(sdbusplus::bus::bus& bus, const char* path, const char* filePath,
+Config::Config(sdbusplus::bus_t& bus, const char* path, const char* filePath,
                const char* caCertFile, const char* certFile, bool secureLDAP,
                std::string ldapServerURI, std::string ldapBindDN,
                std::string ldapBaseDN, std::string&& ldapBindDNPassword,
@@ -106,7 +105,7 @@ Config::Config(sdbusplus::bus::bus& bus, const char* path, const char* filePath,
     parent.startOrStopService(nslcdService, enabled());
 }
 
-Config::Config(sdbusplus::bus::bus& bus, const char* path, const char* filePath,
+Config::Config(sdbusplus::bus_t& bus, const char* path, const char* filePath,
                const char* caCertFile, const char* certFile,
                ConfigIface::Type ldapType, ConfigMgr& parent) :
     Ifaces(bus, path, Ifaces::action::defer_emit),
@@ -137,7 +136,7 @@ Config::Config(sdbusplus::bus::bus& bus, const char* path, const char* filePath,
     configPersistPath += "/config";
 }
 
-void Config::certificateInstalled(sdbusplus::message::message& /*msg*/)
+void Config::certificateInstalled(sdbusplus::message_t& /*msg*/)
 {
     try
     {
@@ -158,7 +157,7 @@ void Config::certificateInstalled(sdbusplus::message::message& /*msg*/)
     }
 }
 
-void Config::certificateChanged(sdbusplus::message::message& msg)
+void Config::certificateChanged(sdbusplus::message_t& msg)
 {
     std::string objectName;
     std::map<std::string, std::variant<std::string>> msgData;
@@ -271,7 +270,7 @@ void Config::writeConfig()
                  << ConfigIface::groupNameAttribute() << "\n";
         confData << "map passwd homeDirectory    \"/home/$sAMAccountName\"\n";
         confData << "map passwd gecos            displayName\n";
-        confData << "map passwd loginShell       \"/bin/bash\"\n";
+        confData << "map passwd loginShell       \"/bin/sh\"\n";
         confData << "map group gidNumber         "
                     "objectSid:S-1-5-21-3623811015-3361044348-30300820\n";
         confData << "map group cn                "
@@ -295,6 +294,7 @@ void Config::writeConfig()
                  << ConfigIface::userNameAttribute() << "\n";
         confData << "map passwd gidNumber        "
                  << ConfigIface::groupNameAttribute() << "\n";
+        confData << "map passwd loginShell       \"/bin/sh\"\n";
         confData << "nss_initgroups_ignoreusers ALLLOCAL\n";
     }
     try
@@ -362,11 +362,11 @@ std::string Config::ldapServerURI(std::string value)
         {
             return value;
         }
-        if (isValidLDAPURI(value, LDAPSscheme))
+        if (isValidLDAPURI(value, ldapsScheme))
         {
             secureLDAP = true;
         }
-        else if (isValidLDAPURI(value, LDAPscheme))
+        else if (isValidLDAPURI(value, ldapScheme))
         {
             secureLDAP = false;
         }
@@ -655,7 +655,7 @@ void Config::save(Archive& archive, const std::uint32_t /*version*/) const
 template <class Archive>
 void Config::load(Archive& archive, const std::uint32_t /*version*/)
 {
-    bool bVal = false;
+    bool bVal;
     archive(bVal);
     EnableIface::enabled(bVal);
 
@@ -717,11 +717,11 @@ bool Config::deserialize()
             cereal::BinaryInputArchive iarchive(is);
             iarchive(*this);
 
-            if (isValidLDAPURI(ldapServerURI(), LDAPscheme))
+            if (isValidLDAPURI(ldapServerURI(), ldapScheme))
             {
                 secureLDAP = false;
             }
-            else if (isValidLDAPURI(ldapServerURI(), LDAPSscheme))
+            else if (isValidLDAPURI(ldapServerURI(), ldapsScheme))
             {
                 secureLDAP = true;
             }

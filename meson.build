@@ -9,16 +9,14 @@ project('phosphor-user-manager',
         ]
 )
 
+if get_option('root_user_mgmt').enabled()
+    add_project_arguments('-DENABLE_ROOT_USER_MGMT', language:'cpp')
+endif
+
 conf_data = configuration_data()
 
 conf_data.set_quoted('USER_MANAGER_BUSNAME', 'xyz.openbmc_project.User.Manager',
                       description : 'The DBus busname to own.')
-
-conf_data.set_quoted('LDAP_MAPPER_MANAGER_BUSNAME', 'xyz.openbmc_project.LDAP.PrivilegeMapper',
-                      description : 'The Dbus busname LDAP privilege mapper application.')
-
-conf_data.set_quoted('LDAP_MAPPER_PERSIST_PATH', '/var/lib/phosphor-ldap-mapper/groups',
-                      description : 'Path of directory containing LDAP groups privilege mapping.')
 
 conf_data.set_quoted('DEFAULT_CRYPT_ALGO', '1',
                       description : 'The default crypt algorithm if one not found in shadow.')
@@ -138,56 +136,35 @@ systemd_system_unit_dir = systemd_dep.get_variable(
     pkgconfig: 'systemdsystemunitdir'
 )
 
-busconfig_dir = get_option('datadir') / 'dbus-1' / 'system.d'
-
-cert_manager_dir = get_option('datadir') / 'phosphor-certificate-manager'
-
-certs = []
-
-busconfig = []
-
-systemd_alias = []
-
-certs += 'nslcd'
-
-busconfig += 'phosphor-nslcd-cert-config.conf'
-
-systemd_alias += [[
-        '../phosphor-certificate-manager@.service',
-        'multi-user.target.wants/phosphor-certificate-manager@nslcd.service'
-]]
-
-
 install_data(
-    busconfig,
-    install_dir: busconfig_dir,
+    'phosphor-nslcd-cert-config.conf',
+    install_dir: get_option('datadir') / 'dbus-1' / 'system.d',
 )
 
 install_data(
-    certs,
-    install_dir: cert_manager_dir,
+    'nslcd',
+    install_dir: get_option('datadir') / 'phosphor-certificate-manager',
 )
 
-foreach service: systemd_alias
-    # Meson 0.61 will support this:
-    #install_symlink(
-    #      service,
-    #      install_dir: systemd_system_unit_dir,
-    #      pointing_to: link,
-    #  )
-    meson.add_install_script(
-        'sh', '-c',
-        'mkdir -p $(dirname $DESTDIR/@0@/@1@)'.format(systemd_system_unit_dir,
-            service[1]),
-    )
-    meson.add_install_script(
-        'sh', '-c',
-        'ln -s @0@ $DESTDIR/@1@/@2@'.format(service[0], systemd_system_unit_dir,
-            service[1]),
-    )
-endforeach
+# Figure out how to use install_symlink to install symlink to a file of another
+# recipe
+#install_symlink(
+#      'phosphor-certificate-manager@nslcd.service',
+#      install_dir: systemd_system_unit_dir / 'multi-user.target.wants',
+#      pointing_to: systemd_system_unit_dir / 'phosphor-certificate-manager@.service',
+#  )
+meson.add_install_script(
+    'sh', '-c',
+    'mkdir -p $(dirname $DESTDIR/@0@/@1@)'.format(systemd_system_unit_dir,
+        'multi-user.target.wants/phosphor-certificate-manager@nslcd.service'),
+)
+meson.add_install_script(
+    'sh', '-c',
+    'ln -s @0@ $DESTDIR/@1@/@2@'.format('../phosphor-certificate-manager@.service',
+        systemd_system_unit_dir,
+        'multi-user.target.wants/phosphor-certificate-manager@nslcd.service'),
+)
 
-subdir('phosphor-ldap-mapper')
 subdir('phosphor-ldap-config')
 
 if get_option('tests').enabled()

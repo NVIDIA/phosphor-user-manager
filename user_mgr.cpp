@@ -31,8 +31,6 @@
 #include <unistd.h>
 
 #include <boost/algorithm/string/split.hpp>
-#include <boost/process/child.hpp>
-#include <boost/process/io.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/log.hpp>
@@ -40,9 +38,15 @@
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
 #include <algorithm>
+#include <array>
+#include <ctime>
 #include <fstream>
 #include <numeric>
 #include <regex>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace phosphor
 {
@@ -50,10 +54,8 @@ namespace user
 {
 
 static constexpr const char* passwdFileName = "/etc/passwd";
-static constexpr size_t ipmiMaxUsers = 15;
 static constexpr size_t ipmiMaxUserNameLen = 16;
 static constexpr size_t systemMaxUserNameLen = 30;
-static constexpr size_t maxSystemUsers = 30;
 static constexpr const char* grpSsh = "ssh";
 static constexpr int success = 0;
 static constexpr int failure = -1;
@@ -109,62 +111,67 @@ using NoResource =
     sdbusplus::xyz::openbmc_project::User::Common::Error::NoResource;
 
 using Argument = xyz::openbmc_project::Common::InvalidArgument;
+using GroupNameExists =
+    sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists;
+using GroupNameDoesNotExists =
+    sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameDoesNotExist;
 
-template <typename... ArgTypes>
-static std::vector<std::string> executeCmd(const char* path,
-                                           ArgTypes&&... tArgs)
+namespace
 {
-    std::vector<std::string> stdOutput;
-    boost::process::ipstream stdOutStream;
-    boost::process::child execProg(path, const_cast<char*>(tArgs)...,
-                                   boost::process::std_out > stdOutStream);
-    std::string stdOutLine;
 
-    while (stdOutStream && std::getline(stdOutStream, stdOutLine) &&
-           !stdOutLine.empty())
-    {
-        stdOutput.emplace_back(stdOutLine);
-    }
+// The hardcoded groups in OpenBMC projects
+constexpr std::array<const char*, 4> predefinedGroups = {"web", "redfish",
+                                                         "ipmi", "ssh"};
 
-    execProg.wait();
+// These prefixes are for Dynamic Redfish authorization. See
+// https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
 
-    int retCode = execProg.exit_code();
-    if (retCode)
-    {
-        log<level::ERR>("Command execution failed", entry("PATH=%s", path),
-                        entry("RETURN_CODE=%d", retCode));
-        elog<InternalFailure>();
-    }
+// Base role and base privileges are added by Redfish implementation (e.g.,
+// BMCWeb) at compile time
+constexpr std::array<const char*, 4> allowedGroupPrefix = {
+    "openbmc_rfr_",  // OpenBMC Redfish Base Role
+    "openbmc_rfp_",  // OpenBMC Redfish Base Privileges
+    "openbmc_orfr_", // OpenBMC Redfish OEM Role
+    "openbmc_orfp_", // OpenBMC Redfish OEM Privileges
+};
 
-    return stdOutput;
-}
-
-static std::string getCSVFromVector(std::vector<std::string> vec)
+void checkAndThrowsForGroupChangeAllowed(const std::string& groupName)
 {
-    switch (vec.size())
+    bool allowed = false;
+    for (std::string_view prefix : allowedGroupPrefix)
     {
-        case 0:
+        if (groupName.starts_with(prefix))
         {
-            return "";
+            allowed = true;
+            break;
         }
-        break;
-
-        case 1:
-        {
-            return std::string{vec[0]};
-        }
-        break;
-
-        default:
-        {
-            return std::accumulate(
-                std::next(vec.begin()), vec.end(), vec[0],
-                [](std::string a, std::string b) { return a + ',' + b; });
-        }
+    }
+    if (!allowed)
+    {
+        log<level::ERR>("Invalid group name; not in the allowed list",
+                        entry("GroupName=%s", groupName.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
+                              Argument::ARGUMENT_VALUE(groupName.c_str()));
     }
 }
 
-static bool removeStringFromCSV(std::string& csvStr, const std::string& delStr)
+} // namespace
+
+std::string getCSVFromVector(std::span<const std::string> vec)
+{
+    if (vec.empty())
+    {
+        return "";
+    }
+    return std::accumulate(std::next(vec.begin()), vec.end(), vec[0],
+                           [](std::string&& val, std::string_view element) {
+                               val += ',';
+                               val += element;
+                               return val;
+                           });
+}
+
+bool removeStringFromCSV(std::string& csvStr, const std::string& delStr)
 {
     std::string::size_type delStrPos = csvStr.find(delStr);
     if (delStrPos != std::string::npos)
@@ -200,7 +207,7 @@ bool UserMgr::isUserExist(const std::string& userName)
 
 void UserMgr::throwForUserDoesNotExist(const std::string& userName)
 {
-    if (isUserExist(userName) == false)
+    if (!isUserExist(userName))
     {
         log<level::ERR>("User does not exist",
                         entry("USER_NAME=%s", userName.c_str()));
@@ -222,10 +229,24 @@ void UserMgr::throwForDeleteUserInServiceGroup(const std::string& userName)
                    "therefore can't be deleted"));
     }
 }
+void UserMgr::checkAndThrowForDisallowedGroupCreation(
+    const std::string& groupName)
+{
+    if (groupName.size() > maxSystemGroupNameLength ||
+        !std::regex_match(groupName.c_str(),
+                          std::regex("[a-zA-z_][a-zA-Z_0-9]*")))
+    {
+        log<level::ERR>("Invalid group name",
+                        entry("GroupName=%s", groupName.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
+                              Argument::ARGUMENT_VALUE(groupName.c_str()));
+    }
+    checkAndThrowsForGroupChangeAllowed(groupName);
+}
 
 void UserMgr::throwForUserExists(const std::string& userName)
 {
-    if (isUserExist(userName) == true)
+    if (isUserExist(userName))
     {
         log<level::ERR>("User already exists",
                         entry("USER_NAME=%s", userName.c_str()));
@@ -318,6 +339,30 @@ void UserMgr::throwForInvalidGroups(const std::vector<std::string>& groupNames)
     }
 }
 
+std::vector<std::string> UserMgr::readAllGroupsOnSystem()
+{
+    std::vector<std::string> allGroups = {predefinedGroups.begin(),
+                                          predefinedGroups.end()};
+    // rewinds to the beginning of the group database
+    setgrent();
+    struct group* gr = getgrent();
+    while (gr != nullptr)
+    {
+        std::string group(gr->gr_name);
+        for (std::string_view prefix : allowedGroupPrefix)
+        {
+            if (group.starts_with(prefix))
+            {
+                allGroups.push_back(gr->gr_name);
+            }
+        }
+        gr = getgrent();
+    }
+    // close the group database
+    endgrent();
+    return allGroups;
+}
+
 void UserMgr::createUser(std::string userName,
                          std::vector<std::string> groupNames, std::string priv,
                          bool enabled)
@@ -345,12 +390,7 @@ void UserMgr::createUser(std::string userName,
     }
     try
     {
-        // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
-        // 1970-01-01, that's an implementation-defined behavior
-        executeCmd("/usr/sbin/useradd", userName.c_str(), "-G", groups.c_str(),
-                   "-m", "-N", "-s",
-                   (sshRequested ? "/bin/sh" : "/bin/nologin"), "-e",
-                   (enabled ? "" : "1970-01-01"));
+        executeUserAdd(userName.c_str(), groups.c_str(), sshRequested, enabled);
     }
     catch (const InternalFailure& e)
     {
@@ -364,8 +404,8 @@ void UserMgr::createUser(std::string userName,
     std::string userObj(tempObjPath);
     std::sort(groupNames.begin(), groupNames.end());
     usersList.emplace(
-        userName, std::move(std::make_unique<phosphor::user::Users>(
-                      bus, userObj.c_str(), groupNames, priv, enabled, *this)));
+        userName, std::make_unique<phosphor::user::Users>(
+                      bus, userObj.c_str(), groupNames, priv, enabled, *this));
 
     log<level::INFO>("User created successfully",
                      entry("USER_NAME=%s", userName.c_str()));
@@ -388,7 +428,7 @@ void UserMgr::deleteUser(std::string userName)
     }
     try
     {
-        executeCmd("/usr/sbin/userdel", userName.c_str(), "-r");
+        executeUserDelete(userName.c_str());
     }
     catch (const InternalFailure& e)
     {
@@ -404,6 +444,73 @@ void UserMgr::deleteUser(std::string userName)
     return;
 }
 
+void UserMgr::checkDeleteGroupConstraints(const std::string& groupName)
+{
+    if (std::find(groupsMgr.begin(), groupsMgr.end(), groupName) ==
+        groupsMgr.end())
+    {
+        log<level::ERR>("Group already exists",
+                        entry("GROUP_NAME=%s", groupName.c_str()));
+        elog<GroupNameDoesNotExists>();
+    }
+    checkAndThrowsForGroupChangeAllowed(groupName);
+}
+
+void UserMgr::deleteGroup(std::string groupName)
+{
+    checkDeleteGroupConstraints(groupName);
+    try
+    {
+        executeGroupDeletion(groupName.c_str());
+    }
+    catch (const InternalFailure& e)
+    {
+        log<level::ERR>("Group delete failed",
+                        entry("GROUP_NAME=%s", groupName.c_str()));
+        elog<InternalFailure>();
+    }
+
+    groupsMgr.erase(std::find(groupsMgr.begin(), groupsMgr.end(), groupName));
+    UserMgrIface::allGroups(groupsMgr);
+    log<level::INFO>("Group deleted successfully",
+                     entry("GROUP_NAME=%s", groupName.c_str()));
+}
+
+void UserMgr::checkCreateGroupConstraints(const std::string& groupName)
+{
+    if (std::find(groupsMgr.begin(), groupsMgr.end(), groupName) !=
+        groupsMgr.end())
+    {
+        log<level::ERR>("Group already exists",
+                        entry("GROUP_NAME=%s", groupName.c_str()));
+        elog<GroupNameExists>();
+    }
+    checkAndThrowForDisallowedGroupCreation(groupName);
+    if (groupsMgr.size() >= maxSystemGroupCount)
+    {
+        log<level::ERR>("Group limit reached");
+        elog<NoResource>(xyz::openbmc_project::User::Common::NoResource::REASON(
+            "Group limit reached"));
+    }
+}
+
+void UserMgr::createGroup(std::string groupName)
+{
+    checkCreateGroupConstraints(groupName);
+    try
+    {
+        executeGroupCreation(groupName.c_str());
+    }
+    catch (const InternalFailure& e)
+    {
+        log<level::ERR>("Group create failed",
+                        entry("GROUP_NAME=%s", groupName.c_str()));
+        elog<InternalFailure>();
+    }
+    groupsMgr.push_back(groupName);
+    UserMgrIface::allGroups(groupsMgr);
+}
+
 void UserMgr::renameUser(std::string userName, std::string newUserName)
 {
     // All user management lock has to be based on /etc/shadow
@@ -414,9 +521,7 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
                                 usersList[userName].get()->userGroups());
     try
     {
-        std::string newHomeDir = "/home/" + newUserName;
-        executeCmd("/usr/sbin/usermod", "-l", newUserName.c_str(),
-                   userName.c_str(), "-d", newHomeDir.c_str(), "-m");
+        executeUserRename(userName.c_str(), newUserName.c_str());
     }
     catch (const InternalFailure& e)
     {
@@ -436,15 +541,14 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
     // InterfacesAdded. So first send out userRenamed signal.
     this->userRenamed(userName, newUserName);
     usersList.erase(userName);
-    usersList.emplace(
-        newUserName,
-        std::move(std::make_unique<phosphor::user::Users>(
-            bus, newUserObj.c_str(), groupNames, priv, enabled, *this)));
+    usersList.emplace(newUserName, std::make_unique<phosphor::user::Users>(
+                                       bus, newUserObj.c_str(), groupNames,
+                                       priv, enabled, *this));
     return;
 }
 
 void UserMgr::updateGroupsAndPriv(const std::string& userName,
-                                  const std::vector<std::string>& groupNames,
+                                  std::vector<std::string> groupNames,
                                   const std::string& priv)
 {
     throwForInvalidPrivilege(priv);
@@ -481,8 +585,7 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
     }
     try
     {
-        executeCmd("/usr/sbin/usermod", userName.c_str(), "-G", groups.c_str(),
-                   "-s", (sshRequested ? "/bin/sh" : "/bin/nologin"));
+        executeUserModify(userName.c_str(), groups.c_str(), sshRequested);
     }
     catch (const InternalFailure& e)
     {
@@ -492,6 +595,9 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
 
     log<level::INFO>("User groups / privilege updated successfully",
                      entry("USER_NAME=%s", userName.c_str()));
+    std::sort(groupNames.begin(), groupNames.end());
+    usersList[userName]->setUserGroups(groupNames);
+    usersList[userName]->setUserPrivilege(priv);
     return;
 }
 
@@ -727,10 +833,7 @@ void UserMgr::userEnable(const std::string& userName, bool enabled)
     throwForUserDoesNotExist(userName);
     try
     {
-        // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
-        // 1970-01-01, that's an implementation-defined behavior
-        executeCmd("/usr/sbin/usermod", userName.c_str(), "-e",
-                   (enabled ? "" : "1970-01-01"));
+        executeUserModifyUserEnable(userName.c_str(), enabled);
     }
     catch (const InternalFailure& e)
     {
@@ -741,55 +844,98 @@ void UserMgr::userEnable(const std::string& userName, bool enabled)
     log<level::INFO>("User enabled/disabled state updated successfully",
                      entry("USER_NAME=%s", userName.c_str()),
                      entry("ENABLED=%d", enabled));
+    usersList[userName]->setUserEnabled(enabled);
     return;
 }
 
 /**
  * pam_tally2 app will provide the user failure count and failure status
  * in second line of output with words position [0] - user name,
- * [1] - failure count, [2] - latest timestamp, [3] - failure timestamp
+ * [1] - failure count, [2] - latest failure date, [3] - latest failure time
  * [4] - failure app
  **/
 
-static constexpr size_t t2UserIdx = 0;
 static constexpr size_t t2FailCntIdx = 1;
+static constexpr size_t t2FailDateIdx = 2;
+static constexpr size_t t2FailTimeIdx = 3;
 static constexpr size_t t2OutputIndex = 1;
 
 bool UserMgr::userLockedForFailedAttempt(const std::string& userName)
 {
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
-    std::vector<std::string> output;
+    if (AccountPolicyIface::maxLoginAttemptBeforeLockout() == 0)
+    {
+        return false;
+    }
 
-    output = executeCmd("/usr/sbin/pam_tally2", "-u", userName.c_str());
+    std::vector<std::string> output;
+    try
+    {
+        output = getFailedAttempt(userName.c_str());
+    }
+    catch (const InternalFailure& e)
+    {
+        log<level::ERR>("Unable to read login failure counter");
+        elog<InternalFailure>();
+    }
 
     std::vector<std::string> splitWords;
     boost::algorithm::split(splitWords, output[t2OutputIndex],
                             boost::algorithm::is_any_of("\t "),
                             boost::token_compress_on);
-
+    uint16_t failAttempts = 0;
     try
     {
         unsigned long tmp = std::stoul(splitWords[t2FailCntIdx], nullptr);
-        uint16_t value16 = 0;
-        if (tmp > std::numeric_limits<decltype(value16)>::max())
+        if (tmp > std::numeric_limits<decltype(failAttempts)>::max())
         {
             throw std::out_of_range("Out of range");
         }
-        value16 = static_cast<decltype(value16)>(tmp);
-        if (AccountPolicyIface::maxLoginAttemptBeforeLockout() != 0 &&
-            value16 >= AccountPolicyIface::maxLoginAttemptBeforeLockout())
-        {
-            return true; // User account is locked out
-        }
-        return false; // User account is un-locked
+        failAttempts = static_cast<decltype(failAttempts)>(tmp);
     }
     catch (const std::exception& e)
     {
         log<level::ERR>("Exception for userLockedForFailedAttempt",
                         entry("WHAT=%s", e.what()));
-        throw;
+        elog<InternalFailure>();
     }
+
+    if (failAttempts < AccountPolicyIface::maxLoginAttemptBeforeLockout())
+    {
+        return false;
+    }
+
+    // When failedAttempts is not 0, Latest failure date/time should be
+    // available
+    if (splitWords.size() < 4)
+    {
+        log<level::ERR>("Unable to read latest failure date/time");
+        elog<InternalFailure>();
+    }
+
+    const std::string failDateTime =
+        splitWords[t2FailDateIdx] + ' ' + splitWords[t2FailTimeIdx];
+
+    // NOTE: Cannot use std::get_time() here as the implementation of %y in
+    // libstdc++ does not match POSIX strptime() before gcc 12.1.0
+    // https://gcc.gnu.org/git/?p=gcc.git;a=commit;h=a8d3c98746098e2784be7144c1ccc9fcc34a0888
+    std::tm tmStruct = {};
+    if (!strptime(failDateTime.c_str(), "%D %H:%M:%S", &tmStruct))
+    {
+        log<level::ERR>("Failed to parse latest failure date/time");
+        elog<InternalFailure>();
+    }
+
+    time_t failTimestamp = std::mktime(&tmStruct);
+    if (failTimestamp +
+            static_cast<time_t>(AccountPolicyIface::accountUnlockTimeout()) <=
+        std::time(NULL))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 bool UserMgr::userLockedForFailedAttempt(const std::string& userName,
@@ -797,17 +943,20 @@ bool UserMgr::userLockedForFailedAttempt(const std::string& userName,
 {
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
-    std::vector<std::string> output;
     if (value == true)
     {
         return userLockedForFailedAttempt(userName);
     }
-    output = executeCmd("/usr/sbin/pam_tally2", "-u", userName.c_str(), "-r");
 
-    std::vector<std::string> splitWords;
-    boost::algorithm::split(splitWords, output[t2OutputIndex],
-                            boost::algorithm::is_any_of("\t "),
-                            boost::token_compress_on);
+    try
+    {
+        executeCmd("/usr/sbin/pam_tally2", "-u", userName.c_str(), "-r");
+    }
+    catch (const InternalFailure& e)
+    {
+        log<level::ERR>("Unable to reset login failure counter");
+        elog<InternalFailure>();
+    }
 
     return userLockedForFailedAttempt(userName);
 }
@@ -837,8 +986,8 @@ bool UserMgr::userPasswordExpired(const std::string& userName)
         // Determine password validity per "chage" docs, where:
         //   spwd.sp_lstchg == 0 means password is expired, and
         //   spwd.sp_max == -1 means the password does not expire.
-        constexpr long seconds_per_day = 60 * 60 * 24;
-        long today = static_cast<long>(time(NULL)) / seconds_per_day;
+        constexpr long secondsPerDay = 60 * 60 * 24;
+        long today = static_cast<long>(time(NULL)) / secondsPerDay;
         if ((spwd.sp_lstchg == 0) ||
             ((spwd.sp_max != -1) && ((spwd.sp_max + spwd.sp_lstchg) < today)))
         {
@@ -939,6 +1088,11 @@ std::vector<std::string> UserMgr::allGroups() const
     }
     return userGroups;
 }
+size_t UserMgr::getNonIpmiUsersCount()
+{
+    std::vector<std::string> ipmiUsers = getUsersInGroup("ipmi");
+    return usersList.size() - ipmiUsers.size();
+}
 
 bool UserMgr::isUserEnabled(const std::string& userName)
 {
@@ -1010,7 +1164,7 @@ DbusUserObj UserMgr::getPrivilegeMapperObject(void)
                         entry("WHAT=%s", e.what()));
         throw;
     }
-    catch (const sdbusplus::exception::exception& e)
+    catch (const sdbusplus::exception_t& e)
     {
         log<level::ERR>(
             "Failed to excute method", entry("METHOD=%s", "GetManagedObjects"),
@@ -1018,57 +1172,6 @@ DbusUserObj UserMgr::getPrivilegeMapperObject(void)
         throw;
     }
     return objects;
-}
-
-std::vector<std::string> UserMgr::getLdapGroupName(const std::string& userName)
-{
-    struct passwd pwd
-    {};
-    struct passwd* pwdPtr = nullptr;
-    auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-    int i;
-
-    if (buflen < -1)
-    {
-        // Use a default size if there is no hard limit suggested by sysconf()
-        buflen = 1024;
-    }
-    std::vector<char> buffer(buflen);
-    // gid_t gid = 0;
-
-    auto status =
-        getpwnam_r(userName.c_str(), &pwd, buffer.data(), buflen, &pwdPtr);
-    // On success, getpwnam_r() returns zero, and set *pwdPtr to pwd.
-    // If no matching password record was found, these functions return 0
-    // and store NULL in *pwdPtr
-    if (status && !(&pwd == pwdPtr))
-    {
-        log<level::ERR>("User does not exist",
-                        entry("USER_NAME=%s", userName.c_str()));
-        elog<UserNameDoesNotExist>();
-    }
-
-    struct group* groups = nullptr;
-    std::vector<std::string> ldapGroupName;
-
-    while ((groups = getgrent()) != NULL)
-    {
-        i = 0;
-        // Search through group members
-        while (groups->gr_mem[i] != NULL)
-        {
-            if (userName.compare(groups->gr_mem[i]) == 0)
-            {
-                ldapGroupName.push_back(groups->gr_name);
-                break;
-            }
-            ++i;
-        }
-    }
-    // Call endgrent() to close the group database.
-    endgrent();
-
-    return ldapGroupName;
 }
 
 std::string UserMgr::getServiceName(std::string&& path, std::string&& intf)
@@ -1099,11 +1202,114 @@ std::string UserMgr::getServiceName(std::string&& path, std::string&& intf)
     return mapperResponse.begin()->first;
 }
 
+gid_t UserMgr::getPrimaryGroup(const std::string& userName) const
+{
+    static auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (buflen <= 0)
+    {
+        // Use a default size if there is no hard limit suggested by sysconf()
+        buflen = 1024;
+    }
+
+    struct passwd pwd;
+    struct passwd* pwdPtr = nullptr;
+    std::vector<char> buffer(buflen);
+
+    auto status = getpwnam_r(userName.c_str(), &pwd, buffer.data(),
+                             buffer.size(), &pwdPtr);
+    // On success, getpwnam_r() returns zero, and set *pwdPtr to pwd.
+    // If no matching password record was found, these functions return 0
+    // and store NULL in *pwdPtr
+    if (!status && (&pwd == pwdPtr))
+    {
+        return pwd.pw_gid;
+    }
+
+    log<level::ERR>("User noes not exist",
+                    entry("USER_NAME=%s", userName.c_str()));
+    elog<UserNameDoesNotExist>();
+}
+
+bool UserMgr::isGroupMember(const std::string& userName, gid_t primaryGid,
+                            const std::string& groupName) const
+{
+    static auto buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+    if (buflen <= 0)
+    {
+        // Use a default size if there is no hard limit suggested by sysconf()
+        buflen = 1024;
+    }
+
+    struct group grp;
+    struct group* grpPtr = nullptr;
+    std::vector<char> buffer(buflen);
+
+    auto status = getgrnam_r(groupName.c_str(), &grp, buffer.data(),
+                             buffer.size(), &grpPtr);
+
+    // Groups with a lot of members may require a buffer of bigger size than
+    // suggested by _SC_GETGR_R_SIZE_MAX.
+    // 32K should be enough for about 2K members.
+    constexpr auto maxBufferLength = 32 * 1024;
+    while (status == ERANGE && buflen < maxBufferLength)
+    {
+        buflen *= 2;
+        buffer.resize(buflen);
+
+        log<level::DEBUG>("Increase buffer for getgrnam_r()",
+                          entry("BUFFER_LENGTH=%zu", buflen));
+
+        status = getgrnam_r(groupName.c_str(), &grp, buffer.data(),
+                            buffer.size(), &grpPtr);
+    }
+
+    // On success, getgrnam_r() returns zero, and set *grpPtr to grp.
+    // If no matching group record was found, these functions return 0
+    // and store NULL in *grpPtr
+    if (!status && (&grp == grpPtr))
+    {
+        if (primaryGid == grp.gr_gid)
+        {
+            return true;
+        }
+
+        for (auto i = 0; grp.gr_mem && grp.gr_mem[i]; ++i)
+        {
+            if (userName == grp.gr_mem[i])
+            {
+                return true;
+            }
+        }
+    }
+    else if (status == ERANGE)
+    {
+        log<level::ERR>("Group info requires too much memory",
+                        entry("GROUP_NAME=%s", groupName.c_str()));
+    }
+    else
+    {
+        log<level::ERR>("Group does not exist",
+                        entry("GROUP_NAME=%s", groupName.c_str()));
+    }
+
+    return false;
+}
+
+void UserMgr::executeGroupCreation(const char* groupName)
+{
+    executeCmd("/usr/sbin/groupadd", groupName);
+}
+
+void UserMgr::executeGroupDeletion(const char* groupName)
+{
+    executeCmd("/usr/sbin/groupdel", groupName);
+}
+
 UserInfoMap UserMgr::getUserInfo(std::string userName)
 {
     UserInfoMap userInfo;
     // Check whether the given user is local user or not.
-    if (isUserExist(userName) == true)
+    if (isUserExist(userName))
     {
         const auto& user = usersList[userName];
         userInfo.emplace("UserPrivilege", user.get()->userPrivilege());
@@ -1117,46 +1323,27 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
     }
     else
     {
-        std::vector<std::string> ldapGroupName = getLdapGroupName(userName);
-        if (ldapGroupName.empty())
-        {
-            log<level::ERR>("Unable to get group name",
-                            entry("USER_NAME=%s", userName.c_str()));
-            elog<InternalFailure>();
-        }
+        auto primaryGid = getPrimaryGroup(userName);
 
         DbusUserObj objects = getPrivilegeMapperObject();
 
-        std::string privilege;
-        std::string groupName;
         std::string ldapConfigPath;
-        uint32_t currentPriv, level;
-        currentPriv = privMgr.size() - 1;
+        std::string userPrivilege;
 
         try
         {
-            for (const auto& obj : objects)
+            for (const auto& [path, interfaces] : objects)
             {
-                for (const auto& interface : obj.second)
+                auto it = interfaces.find("xyz.openbmc_project.Object.Enable");
+                if (it != interfaces.end())
                 {
-                    if ((interface.first ==
-                         "xyz.openbmc_project.Object.Enable"))
+                    auto propIt = it->second.find("Enabled");
+                    if (propIt != it->second.end() &&
+                        std::get<bool>(propIt->second))
                     {
-                        for (const auto& property : interface.second)
-                        {
-                            auto value = std::get<bool>(property.second);
-                            if ((property.first == "Enabled") &&
-                                (value == true))
-                            {
-                                ldapConfigPath = obj.first;
-                                break;
-                            }
-                        }
+                        ldapConfigPath = path.str + '/';
+                        break;
                     }
-                }
-                if (!ldapConfigPath.empty())
-                {
-                    break;
                 }
             }
 
@@ -1165,66 +1352,54 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
                 return userInfo;
             }
 
-            for (const auto& obj : objects)
+            for (const auto& [path, interfaces] : objects)
             {
-                for (const auto& interface : obj.second)
+                if (!path.str.starts_with(ldapConfigPath))
                 {
-                    if ((interface.first ==
-                         "xyz.openbmc_project.User.PrivilegeMapperEntry") &&
-                        (obj.first.str.find(ldapConfigPath) !=
-                         std::string::npos))
-                    {
+                    continue;
+                }
 
-                        // clear the entries
-                        groupName.clear();
-                        privilege.clear();
-                        for (const auto& property : interface.second)
+                auto it = interfaces.find(
+                    "xyz.openbmc_project.User.PrivilegeMapperEntry");
+                if (it != interfaces.end())
+                {
+                    std::string privilege;
+                    std::string groupName;
+
+                    for (const auto& [propName, propValue] : it->second)
+                    {
+                        if (propName == "GroupName")
                         {
-                            auto value = std::get<std::string>(property.second);
-                            if (property.first == "GroupName")
-                            {
-                                groupName = value;
-                            }
-                            else if (property.first == "Privilege")
-                            {
-                                privilege = value;
-                            }
-                            // if both groupname and pivilege are set then check
-                            // if user is part of group
-                            if (!groupName.empty() && !privilege.empty())
-                            {
-                                // check if user if in Group so we can give
-                                // privilege
-                                for (auto userLdapGroup : ldapGroupName)
-                                {
-                                    if (groupName == userLdapGroup)
-                                    {
-                                        // check priv level
-                                        for (level = 0; level < privMgr.size();
-                                             ++level)
-                                        {
-                                            // update priv level if higher than
-                                            // current level AND if priv is set
-                                            if (privilege == privMgr[level] &&
-                                                level <= currentPriv)
-                                            {
-                                                currentPriv = level;
-                                                userInfo["UserPrivilege"] =
-                                                    privilege;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            groupName = std::get<std::string>(propValue);
+                        }
+                        else if (propName == "Privilege")
+                        {
+                            privilege = std::get<std::string>(propValue);
                         }
                     }
+
+                    if (!groupName.empty() && !privilege.empty() &&
+                        isGroupMember(userName, primaryGid, groupName))
+                    {
+                        userPrivilege = privilege;
+                        break;
+                    }
+                }
+                if (!userPrivilege.empty())
+                {
+                    break;
                 }
             }
-            auto priv = std::get<std::string>(userInfo["UserPrivilege"]);
 
-            if (priv.empty())
+            if (!userPrivilege.empty())
             {
-                log<level::ERR>("LDAP group privilege mapping does not exist");
+                userInfo.emplace("UserPrivilege", userPrivilege);
+            }
+            else
+            {
+                log<level::WARNING>("LDAP group privilege mapping does not "
+                                    "exist, default \"priv-user\" is used");
+                userInfo.emplace("UserPrivilege", "priv-user");
             }
         }
         catch (const std::bad_variant_access& e)
@@ -1493,6 +1668,49 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
 
     // emit the signal
     this->emit_object_added();
+}
+
+void UserMgr::executeUserAdd(const char* userName, const char* groups,
+                             bool sshRequested, bool enabled)
+{
+    // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
+    // 1970-01-01, that's an implementation-defined behavior
+    executeCmd("/usr/sbin/useradd", userName, "-G", groups, "-m", "-N", "-s",
+               (sshRequested ? "/bin/sh" : "/sbin/nologin"), "-e",
+               (enabled ? "" : "1970-01-01"));
+}
+
+void UserMgr::executeUserDelete(const char* userName)
+{
+    executeCmd("/usr/sbin/userdel", userName, "-r");
+}
+
+void UserMgr::executeUserRename(const char* userName, const char* newUserName)
+{
+    std::string newHomeDir = "/home/";
+    newHomeDir += newUserName;
+    executeCmd("/usr/sbin/usermod", "-l", newUserName, userName, "-d",
+               newHomeDir.c_str(), "-m");
+}
+
+void UserMgr::executeUserModify(const char* userName, const char* newGroups,
+                                bool sshRequested)
+{
+    executeCmd("/usr/sbin/usermod", userName, "-G", newGroups, "-s",
+               (sshRequested ? "/bin/sh" : "/sbin/nologin"));
+}
+
+void UserMgr::executeUserModifyUserEnable(const char* userName, bool enabled)
+{
+    // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
+    // 1970-01-01, that's an implementation-defined behavior
+    executeCmd("/usr/sbin/usermod", userName, "-e",
+               (enabled ? "" : "1970-01-01"));
+}
+
+std::vector<std::string> UserMgr::getFailedAttempt(const char* userName)
+{
+    return executeCmd("/usr/sbin/pam_tally2", "-u", userName);
 }
 
 } // namespace user

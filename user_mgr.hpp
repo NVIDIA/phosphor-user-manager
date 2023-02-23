@@ -16,18 +16,32 @@
 #pragma once
 #include "users.hpp"
 
+#include <boost/process/child.hpp>
+#include <boost/process/io.hpp>
+#include <phosphor-logging/elog-errors.hpp>
+#include <phosphor-logging/elog.hpp>
+#include <phosphor-logging/log.hpp>
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/AccountPolicy/server.hpp>
 #include <xyz/openbmc_project/User/Manager/server.hpp>
 
+#include <span>
+#include <string>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
 namespace phosphor
 {
 namespace user
 {
+
+inline constexpr size_t ipmiMaxUsers = 15;
+inline constexpr size_t maxSystemUsers = 30;
+inline constexpr size_t maxSystemGroupNameLength = 32;
+inline constexpr size_t maxSystemGroupCount = 64;
 
 using UserMgrIface = sdbusplus::xyz::openbmc_project::User::server::Manager;
 using UserSSHLists =
@@ -35,8 +49,7 @@ using UserSSHLists =
 using AccountPolicyIface =
     sdbusplus::xyz::openbmc_project::User::server::AccountPolicy;
 
-using Ifaces =
-    sdbusplus::server::object::object<UserMgrIface, AccountPolicyIface>;
+using Ifaces = sdbusplus::server::object_t<UserMgrIface, AccountPolicyIface>;
 
 using Privilege = std::string;
 using GroupList = std::vector<std::string>;
@@ -51,14 +64,48 @@ using DbusUserObjPath = sdbusplus::message::object_path;
 
 using DbusUserPropVariant = std::variant<Privilege, ServiceEnabled>;
 
-using DbusUserObjProperties =
-    std::vector<std::pair<PropertyName, DbusUserPropVariant>>;
+using DbusUserObjProperties = std::map<PropertyName, DbusUserPropVariant>;
 
 using Interface = std::string;
 
 using DbusUserObjValue = std::map<Interface, DbusUserObjProperties>;
 
 using DbusUserObj = std::map<DbusUserObjPath, DbusUserObjValue>;
+
+std::string getCSVFromVector(std::span<const std::string> vec);
+
+bool removeStringFromCSV(std::string& csvStr, const std::string& delStr);
+
+template <typename... ArgTypes>
+std::vector<std::string> executeCmd(const char* path, ArgTypes&&... tArgs)
+{
+    std::vector<std::string> stdOutput;
+    boost::process::ipstream stdOutStream;
+    boost::process::child execProg(path, const_cast<char*>(tArgs)...,
+                                   boost::process::std_out > stdOutStream);
+    std::string stdOutLine;
+
+    while (stdOutStream && std::getline(stdOutStream, stdOutLine) &&
+           !stdOutLine.empty())
+    {
+        stdOutput.emplace_back(stdOutLine);
+    }
+
+    execProg.wait();
+
+    int retCode = execProg.exit_code();
+    if (retCode)
+    {
+        phosphor::logging::log<phosphor::logging::level::ERR>(
+            "Command execution failed",
+            phosphor::logging::entry("PATH=%s", path),
+            phosphor::logging::entry("RETURN_CODE=%d", retCode));
+        phosphor::logging::elog<
+            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure>();
+    }
+
+    return stdOutput;
+}
 
 /** @class UserMgr
  *  @brief Responsible for managing user accounts over the D-Bus interface.
@@ -78,7 +125,7 @@ class UserMgr : public Ifaces
      *  @param[in] bus  - sdbusplus handler
      *  @param[in] path - D-Bus path
      */
-    UserMgr(sdbusplus::bus::bus& bus, const char* path);
+    UserMgr(sdbusplus::bus_t& bus, const char* path);
 
     /** @brief create user method.
      *  This method creates a new user as requested
@@ -114,7 +161,7 @@ class UserMgr : public Ifaces
      *  @param[in] priv - Privilege to be updated.
      */
     void updateGroupsAndPriv(const std::string& userName,
-                             const std::vector<std::string>& groups,
+                             std::vector<std::string> groups,
                              const std::string& priv);
 
     /** @brief Update user enabled state.
@@ -197,39 +244,50 @@ class UserMgr : public Ifaces
 
   private:
     /** @brief sdbusplus handler */
-    sdbusplus::bus::bus& bus;
+    //sdbusplus::bus::bus& bus;
 
-    /** @brief object path */
-    const std::string path;
+    /** @brief get IPMI user count
+     *  method to get IPMI user count
+     *
+     * @return - returns user count
+     */
+    virtual size_t getIpmiUsersCount(void);
 
-    /** @brief privilege manager container */
-    std::vector<std::string> privMgr = {"priv-admin", "priv-operator",
-                                        "priv-user", "priv-noaccess"};
+    void createGroup(std::string groupName) override;
 
     /** @brief groups manager container */
     std::vector<std::string> groupsMgr = {"web", "redfish", "ipmi", "ssh",
                                           "redfish-hostiface", "service"};
+    void deleteGroup(std::string groupName) override;
 
-    /** @brief map container to hold users object */
-    using UserName = std::string;
-    std::unordered_map<UserName, std::unique_ptr<phosphor::user::Users>>
-        usersList;
+    static std::vector<std::string> readAllGroupsOnSystem();
 
-    /** @brief get users in group
-     *  method to get group user list
+  protected:
+    /** @brief get pam argument value
+     *  method to get argument value from pam configuration
      *
-     *  @param[in] groupName - group name
+     *  @param[in] moduleName - name of the module from where arg has to be read
+     *  @param[in] argName - argument name
+     *  @param[out] argValue - argument value
      *
-     *  @return userList  - list of users in the group.
+     *  @return 0 - success state of the function
      */
-    std::vector<std::string> getUsersInGroup(const std::string& groupName);
+    int getPamModuleArgValue(const std::string& moduleName,
+                             const std::string& argName, std::string& argValue);
 
-    /** @brief get user & SSH users list
-     *  method to get the users and ssh users list.
+    /** @brief set pam argument value
+     *  method to set argument value in pam configuration
      *
-     *@return - vector of User & SSH user lists
+     *  @param[in] moduleName - name of the module in which argument value has
+     * to be set
+     *  @param[in] argName - argument name
+     *  @param[out] argValue - argument value
+     *
+     *  @return 0 - success state of the function
      */
-    UserSSHLists getUserAndSshGrpList(void);
+    int setPamModuleArgValue(const std::string& moduleName,
+                             const std::string& argName,
+                             const std::string& argValue);
 
     /** @brief check for user presence
      *  method to check for user existence
@@ -238,6 +296,8 @@ class UserMgr : public Ifaces
      *  @return -true if user exists and false if not.
      */
     bool isUserExist(const std::string& userName);
+
+    size_t getNonIpmiUsersCount();
 
     /** @brief check user exists
      *  method to check whether user exist, and throw if not.
@@ -277,6 +337,26 @@ class UserMgr : public Ifaces
      */
     void throwForMaxGrpUserCount(const std::vector<std::string>& groupNames);
 
+    virtual void executeUserAdd(const char* userName, const char* groups,
+                                bool sshRequested, bool enabled);
+
+    virtual void executeUserDelete(const char* userName);
+
+    virtual void executeUserRename(const char* userName,
+                                   const char* newUserName);
+
+    virtual void executeUserModify(const char* userName, const char* newGroups,
+                                   bool sshRequested);
+
+    virtual void executeUserModifyUserEnable(const char* userName,
+                                             bool enabled);
+
+    virtual void executeGroupCreation(const char* groupName);
+
+    virtual void executeGroupDeletion(const char* groupName);
+
+    virtual std::vector<std::string> getFailedAttempt(const char* userName);
+
     /** @brief check for valid privielge
      *  method to check valid privilege, and throw if invalid
      *
@@ -291,38 +371,51 @@ class UserMgr : public Ifaces
      */
     void throwForInvalidGroups(const std::vector<std::string>& groupName);
 
-    /** @brief get user enabled state
-     *  method to get user enabled state.
-     *
-     *  @param[in] userName - name of the user
-     *  @return - user enabled status (true/false)
-     */
-    bool isUserEnabled(const std::string& userName);
+    void initializeAccountPolicy();
 
-    /** @brief initialize the user manager objects
-     *  method to initialize the user manager objects accordingly
-     *
+    /** @brief checks if the group creation meets all constraints
+     * @param groupName - group to check
      */
-    void initUserObjects(void);
+    void checkCreateGroupConstraints(const std::string& groupName);
 
-    /** @brief get IPMI user count
-     *  method to get IPMI user count
-     *
-     * @return - returns user count
+    /** @brief checks if the group deletion meets all constraints
+     * @param groupName - group to check
      */
-    size_t getIpmiUsersCount(void);
+    void checkDeleteGroupConstraints(const std::string& groupName);
 
-    /** @brief get pam argument value
-     *  method to get argument value from pam configuration
-     *
-     *  @param[in] moduleName - name of the module from where arg has to be read
-     *  @param[in] argName - argument name
-     *  @param[out] argValue - argument value
-     *
-     *  @return 0 - success state of the function
+    /** @brief checks if the group name is legal and whether it's allowed to
+     * change. The daemon doesn't allow arbitrary group to be created
+     * @param groupName - group to check
      */
-    int getPamModuleArgValue(const std::string& moduleName,
-                             const std::string& argName, std::string& argValue);
+    void checkAndThrowForDisallowedGroupCreation(const std::string& groupName);
+
+  private:
+    /** @brief sdbusplus handler */
+    sdbusplus::bus_t& bus;
+
+    /** @brief object path */
+    const std::string path;
+
+    /** @brief privilege manager container */
+    const std::vector<std::string> privMgr = {"priv-admin", "priv-operator",
+                                              "priv-user"};
+
+    /** @brief groups manager container */
+    //std::vector<std::string> groupsMgr;
+
+    /** @brief map container to hold users object */
+    using UserName = std::string;
+    std::unordered_map<UserName, std::unique_ptr<phosphor::user::Users>>
+        usersList;
+
+    /** @brief get users in group
+     *  method to get group user list
+     *
+     *  @param[in] groupName - group name
+     *
+     *  @return userList  - list of users in the group.
+     */
+    std::vector<std::string> getUsersInGroup(const std::string& groupName);
 
     /** @brief set pam arguments values
      *  method to set argument value in pam configuration for multiple arguments
@@ -357,12 +450,26 @@ class UserMgr : public Ifaces
      *  to be set
      *  @param[in] argName - argument name
      *  @param[in] argValue - argument value with type string
+     *  @brief get user & SSH users list
+     *  method to get the users and ssh users list.
      *
-     *  @return 0 - success state of the function
+     *@return - vector of User & SSH user lists
      */
-    int setPamModuleArgValue(const std::string& moduleName,
-                             const std::string& argName,
-                             const std::string& argValue);
+    UserSSHLists getUserAndSshGrpList(void);
+
+    /** @brief get user enabled state
+     *  method to get user enabled state.
+     *
+     *  @param[in] userName - name of the user
+     *  @return - user enabled status (true/false)
+     */
+    bool isUserEnabled(const std::string& userName);
+
+    /** @brief initialize the user manager objects
+     *  method to initialize the user manager objects accordingly
+     *
+     */
+    void initUserObjects(void);
 
     /** @brief get service name
      *  method to get dbus service name
@@ -373,16 +480,24 @@ class UserMgr : public Ifaces
      */
     std::string getServiceName(std::string&& path, std::string&& intf);
 
-  protected:
-    /** @brief get LDAP group name
-     *  method to get LDAP group name for the given LDAP user
+    /** @brief get primary group ID of specified user
      *
-     *  @param[in] - userName
-     *  @return - group name
+     * @param[in] - userName
+     * @return - primary group ID
      */
-    virtual std::vector<std::string>
-        getLdapGroupName(const std::string& userName);
+    virtual gid_t getPrimaryGroup(const std::string& userName) const;
 
+    /** @brief check whether if the user is a member of the group
+     *
+     * @param[in] - userName
+     * @param[in] - ID of the user's primary group
+     * @param[in] - groupName
+     * @return - true if the user is a member of the group
+     */
+    virtual bool isGroupMember(const std::string& userName, gid_t primaryGid,
+                               const std::string& groupName) const;
+
+  protected:
     /** @brief get privilege mapper object
      *  method to get dbus privilege mapper object
      *
@@ -391,6 +506,9 @@ class UserMgr : public Ifaces
     virtual DbusUserObj getPrivilegeMapperObject(void);
 
     friend class TestUserMgr;
+
+    std::string pamPasswdConfigFile;
+    std::string pamAuthConfigFile;
 };
 
 } // namespace user

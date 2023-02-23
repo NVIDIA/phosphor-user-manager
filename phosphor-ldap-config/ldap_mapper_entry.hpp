@@ -14,7 +14,7 @@ namespace Base = sdbusplus::xyz::openbmc_project;
 using Entry =
     sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapperEntry;
 using Delete = sdbusplus::xyz::openbmc_project::Object::server::Delete;
-using Interfaces = sdbusplus::server::object::object<Entry, Delete>;
+using Interfaces = sdbusplus::server::object_t<Entry, Delete>;
 
 // Forward declaration for Config
 class Config;
@@ -32,8 +32,8 @@ class LDAPMapperEntry : public Interfaces
     ~LDAPMapperEntry() = default;
     LDAPMapperEntry(const LDAPMapperEntry&) = delete;
     LDAPMapperEntry& operator=(const LDAPMapperEntry&) = delete;
-    LDAPMapperEntry(LDAPMapperEntry&&) = default;
-    LDAPMapperEntry& operator=(LDAPMapperEntry&&) = default;
+    LDAPMapperEntry(LDAPMapperEntry&&) = delete;
+    LDAPMapperEntry& operator=(LDAPMapperEntry&&) = delete;
 
     /** @brief Constructs LDAP privilege mapper entry object.
      *
@@ -44,7 +44,7 @@ class LDAPMapperEntry : public Interfaces
      *  @param[in] privilege - the privilege for the group
      *  @param[in] parent - LDAP privilege mapper manager
      */
-    LDAPMapperEntry(sdbusplus::bus::bus& bus, const char* path,
+    LDAPMapperEntry(sdbusplus::bus_t& bus, const char* path,
                     const char* filePath, const std::string& groupName,
                     const std::string& privilege, Config& parent);
 
@@ -55,7 +55,7 @@ class LDAPMapperEntry : public Interfaces
      *  @param[in] filePath - serialization directory path
      *  @param[in] parent - LDAP privilege mapper manager
      */
-    LDAPMapperEntry(sdbusplus::bus::bus& bus, const char* path,
+    LDAPMapperEntry(sdbusplus::bus_t& bus, const char* path,
                     const char* filePath, Config& parent);
 
     /** @brief Delete privilege mapper entry object

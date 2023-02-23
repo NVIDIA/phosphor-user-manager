@@ -58,7 +58,7 @@ using Argument = xyz::openbmc_project::Common::InvalidArgument;
  *  @param[in] enabled - user enabled state
  *  @param[in] parent - user manager - parent object
  */
-Users::Users(sdbusplus::bus::bus& bus, const char* path,
+Users::Users(sdbusplus::bus_t& bus, const char* path,
              std::vector<std::string> groups, std::string priv, bool enabled,
              UserMgr& parent) :
     Interfaces(bus, path, Interfaces::action::defer_emit),
@@ -92,6 +92,16 @@ std::string Users::userPrivilege(std::string value)
     }
     manager.updateGroupsAndPriv(userName, UsersIface::userGroups(), value);
     return UsersIface::userPrivilege(value);
+}
+
+void Users::setUserPrivilege(const std::string& value)
+{
+    UsersIface::userPrivilege(value);
+}
+
+void Users::setUserGroups(const std::vector<std::string>& groups)
+{
+    UsersIface::userGroups(groups);
 }
 
 /** @brief list user privilege
@@ -131,6 +141,11 @@ std::vector<std::string> Users::userGroups(void) const
 bool Users::userEnabled(void) const
 {
     return UsersIface::userEnabled();
+}
+
+void Users::setUserEnabled(bool value)
+{
+    UsersIface::userEnabled(value);
 }
 
 /** @brief update user enabled state

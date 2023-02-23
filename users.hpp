@@ -27,7 +27,7 @@ namespace user
 namespace Base = sdbusplus::xyz::openbmc_project;
 using UsersIface = Base::User::server::Attributes;
 using DeleteIface = Base::Object::server::Delete;
-using Interfaces = sdbusplus::server::object::object<UsersIface, DeleteIface>;
+using Interfaces = sdbusplus::server::object_t<UsersIface, DeleteIface>;
 // Place where all user objects has to be created
 constexpr auto usersObjPath = "/xyz/openbmc_project/user";
 
@@ -55,7 +55,7 @@ class Users : public Interfaces
      *  @param[in] enabled - user enabled state
      *  @param[in] parent - user manager - parent object
      */
-    Users(sdbusplus::bus::bus& bus, const char* path,
+    Users(sdbusplus::bus_t& bus, const char* path,
           std::vector<std::string> groups, std::string priv, bool enabled,
           UserMgr& parent);
 
@@ -70,6 +70,10 @@ class Users : public Interfaces
      *  @param[in] value - User privilege
      */
     std::string userPrivilege(std::string value) override;
+
+    void setUserPrivilege(const std::string& value);
+
+    void setUserGroups(const std::vector<std::string>& groups);
 
     /** @brief lists user privilege
      *
@@ -93,6 +97,8 @@ class Users : public Interfaces
      */
     bool userEnabled(void) const override;
 
+    void setUserEnabled(bool value);
+
     /** @brief update user enabled state
      *
      *  @param[in] value - bool value
@@ -113,7 +119,7 @@ class Users : public Interfaces
     /** @brief indicates if the user's password is expired
      *
      **/
-    bool userPasswordExpired(void) const;
+    bool userPasswordExpired(void) const override;
 
   private:
     std::string userName;

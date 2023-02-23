@@ -17,27 +17,22 @@
 
 #include "user_mgr.hpp"
 
-#include <string>
+#include <sdbusplus/bus.hpp>
+#include <sdbusplus/server/manager.hpp>
 
 // D-Bus root for user manager
-constexpr auto USER_MANAGER_ROOT = "/xyz/openbmc_project/user";
+constexpr auto userManagerRoot = "/xyz/openbmc_project/user";
 
 int main(int /*argc*/, char** /*argv*/)
 {
     auto bus = sdbusplus::bus::new_default();
-    sdbusplus::server::manager::manager objManager(bus, USER_MANAGER_ROOT);
+    sdbusplus::server::manager_t objManager(bus, userManagerRoot);
 
-    phosphor::user::UserMgr userMgr(bus, USER_MANAGER_ROOT);
+    phosphor::user::UserMgr userMgr(bus, userManagerRoot);
 
     // Claim the bus now
     bus.request_name(USER_MANAGER_BUSNAME);
 
     // Wait for client request
-    while (true)
-    {
-        // process dbus calls / signals discarding unhandled
-        bus.process_discard();
-        bus.wait();
-    }
-    return 0;
+    bus.process_loop();
 }
