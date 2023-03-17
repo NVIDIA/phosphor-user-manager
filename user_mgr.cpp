@@ -782,7 +782,7 @@ bool UserMgr::userLockedForFailedAttempt(const std::string& userName)
         }
         value16 = static_cast<decltype(value16)>(tmp);
         if (AccountPolicyIface::maxLoginAttemptBeforeLockout() != 0 &&
-            value16 >= AccountPolicyIface::maxLoginAttemptBeforeLockout())
+            value16 > AccountPolicyIface::maxLoginAttemptBeforeLockout())
         {
             return true; // User account is locked out
         }
