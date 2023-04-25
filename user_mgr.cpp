@@ -639,9 +639,13 @@ uint8_t UserMgr::rememberOldPasswordTimes(uint8_t value)
 
 uint16_t UserMgr::maxLoginAttemptBeforeLockout(uint16_t value)
 {
-    if (maxFailedAttempts != 0 && (value == 0 || value > maxFailedAttempts))
+    if (maxFailedAttempts != 0 && (value < maxFailedAttempts))
     {
-        value = maxFailedAttempts;
+        log<level::ERR>("Setting value lesser than threashold "
+                        "MAX_FAILED_LOGIN_ATTEMPTS is not allowed");
+        elog<NotAllowed>(Reason("Setting value lesser than threshold "
+                                "MAX_FAILED_LOGIN_ATTEMPTS value"
+                                "is not allowed"));
     }
     if (value == AccountPolicyIface::maxLoginAttemptBeforeLockout())
     {
@@ -1447,7 +1451,7 @@ void UserMgr::initUserObjects(void)
 
         for (auto& user : userNameList)
         {
-            if(user == "service")
+            if (user == "service")
             {
                 continue;
             }
