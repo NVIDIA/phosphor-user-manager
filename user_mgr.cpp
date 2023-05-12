@@ -499,7 +499,11 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
 {
     if (value < minPasswdLength)
     {
-        value = minPasswdLength;
+        log<level::ERR>("Setting value lesser than "
+                        " MIN_PASSWORD_LENGTH is not allowed");
+        elog<NotAllowed>(Reason("Setting value lesser than "
+                                "MIN_PASSWORD_LENGTH value"
+                                "is not allowed"));
     }
     if (value == AccountPolicyIface::minPasswordLength())
     {
@@ -559,7 +563,11 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
 {
     if (value < accUnlockTimeout)
     {
-        value = accUnlockTimeout;
+        log<level::ERR>("Setting value lesser than "
+                        "ACCOUNT_UNLOCK_TIMEOUT is not allowed");
+        elog<NotAllowed>(Reason("Setting value lesser than "
+                                "ACCOUNT_UNLOCK_TIMEOUT value"
+                                "is not allowed"));
     }
     if (value == AccountPolicyIface::accountUnlockTimeout())
     {
