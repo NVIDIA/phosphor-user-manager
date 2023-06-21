@@ -17,27 +17,46 @@
 
 #include "user_mgr.hpp"
 
+#include <phosphor-logging/elog-errors.hpp>
+#include <phosphor-logging/elog.hpp>
+#include <phosphor-logging/log.hpp>
+
 #include <string>
 
 // D-Bus root for user manager
 constexpr auto USER_MANAGER_ROOT = "/xyz/openbmc_project/user";
+using namespace phosphor::logging;
 
 int main(int /*argc*/, char** /*argv*/)
 {
     auto bus = sdbusplus::bus::new_default();
     sdbusplus::server::manager::manager objManager(bus, USER_MANAGER_ROOT);
-
-    phosphor::user::UserMgr userMgr(bus, USER_MANAGER_ROOT);
-
-    // Claim the bus now
-    bus.request_name(USER_MANAGER_BUSNAME);
-
-    // Wait for client request
-    while (true)
+    try
     {
-        // process dbus calls / signals discarding unhandled
-        bus.process_discard();
-        bus.wait();
+        phosphor::user::UserMgr userMgr(bus, USER_MANAGER_ROOT);
+
+        // Claim the bus now
+        bus.request_name(USER_MANAGER_BUSNAME);
+
+        // Wait for client request
+        while (true)
+        {
+            // process dbus calls / signals discarding unhandled
+            bus.process_discard();
+            bus.wait();
+        }
+    }
+    catch (const std::exception& e)
+    {
+        log<level::ERR>("Exception occurred during User Manager initialization",
+                        entry("EXCEPTION=%s", e.what()));
+        return -1;
+    }
+    catch (...)
+    {
+        log<level::ERR>(
+            "Exception occurred during User Manager initialization");
+        return -1;
     }
     return 0;
 }
