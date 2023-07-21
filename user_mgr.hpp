@@ -312,6 +312,13 @@ class UserMgr : public Ifaces
      */
     size_t getIpmiUsersCount(void);
 
+    /** @brief get redfish-hostiface user count
+     *  method to get redfish-hostiface user count
+     *
+     * @return - returns user count
+     */
+    size_t getRedfishHostInterfaceUsersCount(void);
+
     /** @brief get pam argument value
      *  method to get argument value from pam configuration
      *

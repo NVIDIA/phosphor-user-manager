@@ -52,8 +52,10 @@ namespace user
 static constexpr const char* passwdFileName = "/etc/passwd";
 static constexpr size_t ipmiMaxUsers = 15;
 static constexpr size_t ipmiMaxUserNameLen = 16;
+static constexpr size_t redfishHostInterfaceUsers = 15;
 static constexpr size_t systemMaxUserNameLen = 30;
-static constexpr size_t maxSystemUsers = 30;
+static constexpr size_t maxSystemUsers =
+    15 + ipmiMaxUsers + redfishHostInterfaceUsers;
 static constexpr const char* grpSsh = "ssh";
 static constexpr int success = 0;
 static constexpr int failure = -1;
@@ -279,15 +281,28 @@ void UserMgr::throwForMaxGrpUserCount(
                     "ipmi user count reached"));
         }
     }
-    else
+    else if (std::find(groupNames.begin(), groupNames.end(),
+                       "redfish-hostiface") != groupNames.end())
     {
-        if (usersList.size() > 0 && (usersList.size() - getIpmiUsersCount()) >=
-                                        (maxSystemUsers - ipmiMaxUsers))
+        if (getRedfishHostInterfaceUsersCount() >= redfishHostInterfaceUsers)
         {
-            log<level::ERR>("Non-ipmi User limit reached");
+            log<level::ERR>("Redfish Host Interface user limit reached");
             elog<NoResource>(
                 xyz::openbmc_project::User::Common::NoResource::REASON(
-                    "Non-ipmi user count reached"));
+                    "redfish host interface user count reached"));
+        }
+    }
+    else
+    {
+        if (usersList.size() > 0 &&
+            (usersList.size() - getIpmiUsersCount() -
+             getRedfishHostInterfaceUsersCount()) >=
+                (maxSystemUsers - ipmiMaxUsers - redfishHostInterfaceUsers))
+        {
+            log<level::ERR>("Non-ipmi-rfhi User limit reached");
+            elog<NoResource>(
+                xyz::openbmc_project::User::Common::NoResource::REASON(
+                    "Non-ipmi-rfhi user count reached"));
         }
     }
     return;
@@ -924,6 +939,12 @@ UserSSHLists UserMgr::getUserAndSshGrpList()
 size_t UserMgr::getIpmiUsersCount()
 {
     std::vector<std::string> userList = getUsersInGroup("ipmi");
+    return userList.size();
+}
+
+size_t UserMgr::getRedfishHostInterfaceUsersCount()
+{
+    std::vector<std::string> userList = getUsersInGroup("redfish-hostiface");
     return userList.size();
 }
 
