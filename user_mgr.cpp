@@ -1061,7 +1061,7 @@ std::vector<std::string> UserMgr::getLdapGroupName(const std::string& userName)
     auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
     int i;
 
-    if (buflen < -1)
+    if (buflen < 0)
     {
         // Use a default size if there is no hard limit suggested by sysconf()
         buflen = 1024;
