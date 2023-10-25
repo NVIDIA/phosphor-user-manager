@@ -27,6 +27,7 @@
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/log.hpp>
+#include <phosphor-logging/redfish_event_log.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
@@ -91,7 +92,17 @@ std::string Users::userPrivilege(std::string value)
         return value;
     }
     manager.updateGroupsAndPriv(userName, UsersIface::userGroups(), value);
-    return UsersIface::userPrivilege(value);
+    std::string ret = UsersIface::userPrivilege(value);
+
+    std::string dbusObjectPath = usersObjPath;
+    dbusObjectPath.push_back('/');
+    dbusObjectPath += userName;
+
+    std::vector<std::string> messageArgs = {"UserPrivilege", value};
+    // send event.
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, dbusObjectPath);
+    return ret;
 }
 
 /** @brief list user privilege
@@ -144,7 +155,18 @@ bool Users::userEnabled(bool value)
         return value;
     }
     manager.userEnable(userName, value);
-    return UsersIface::userEnabled(value);
+    bool ret = UsersIface::userEnabled(value);
+
+    std::string dbusObjectPath = usersObjPath;
+    dbusObjectPath.push_back('/');
+    dbusObjectPath += userName;
+
+    std::vector<std::string> messageArgs = {"UserEnabled",
+                                            std::to_string(value)};
+    // send event.
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, dbusObjectPath);
+    return ret;
 }
 
 /** @brief lists user locked state for failed attempt
@@ -167,7 +189,17 @@ bool Users::userLockedForFailedAttempt(bool value)
     }
     else
     {
-        return manager.userLockedForFailedAttempt(userName, value);
+        bool ret = manager.userLockedForFailedAttempt(userName, value);
+        // send event.
+        std::string dbusObjectPath = usersObjPath;
+        dbusObjectPath.push_back('/');
+        dbusObjectPath += userName;
+
+        std::vector<std::string> messageArgs = {"UserLockedForFailedAttempt",
+                                                std::to_string(value)};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  Entry::Level::Informational, messageArgs, dbusObjectPath);
+        return ret;
     }
 }
 

@@ -8,6 +8,7 @@
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/log.hpp>
+#include <phosphor-logging/redfish_event_log.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
@@ -31,6 +32,7 @@ LDAPMapperEntry::LDAPMapperEntry(sdbusplus::bus::bus& bus, const char* path,
     id(std::stol(std::filesystem::path(path).filename())), manager(parent),
     persistPath(filePath)
 {
+    dbusObjpath = path;
     Interfaces::privilege(privilege, true);
     Interfaces::groupName(groupName, true);
     Interfaces::emit_object_added();
@@ -41,8 +43,9 @@ LDAPMapperEntry::LDAPMapperEntry(sdbusplus::bus::bus& bus, const char* path,
     Interfaces(bus, path, Interfaces::action::defer_emit),
     id(std::stol(std::filesystem::path(path).filename())), manager(parent),
     persistPath(filePath)
-{}
-
+{
+    dbusObjpath = path;
+}
 void LDAPMapperEntry::delete_(void)
 {
     manager.deletePrivilegeMapper(id);
@@ -58,6 +61,15 @@ std::string LDAPMapperEntry::groupName(std::string value)
     manager.checkPrivilegeMapper(value);
     auto val = Interfaces::groupName(value);
     serialize(*this, persistPath);
+    if (value == Interfaces::groupName())
+    {
+        // send a redfish event
+        std::vector<std::string> messageArgs = {"GroupName", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, dbusObjpath);
+    }
     return val;
 }
 
@@ -71,6 +83,15 @@ std::string LDAPMapperEntry::privilege(std::string value)
     manager.checkPrivilegeLevel(value);
     auto val = Interfaces::privilege(value);
     serialize(*this, persistPath);
+    if (value == Interfaces::privilege())
+    {
+        // send a redfish event
+        std::vector<std::string> messageArgs = {"Privilege", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, dbusObjpath);
+    }
     return val;
 }
 

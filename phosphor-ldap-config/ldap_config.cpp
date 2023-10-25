@@ -7,6 +7,7 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
+#include <phosphor-logging/redfish_event_log.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
@@ -340,6 +341,12 @@ std::string Config::ldapBindDNPassword(std::string value)
             parent.startOrStopService(nslcdService, enabled());
         }
         serialize();
+        // Send event.
+        std::vector<std::string> messageArgs = {"LDAPBindDNPassword", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
     {
@@ -392,6 +399,12 @@ std::string Config::ldapServerURI(std::string value)
         }
         // save the object.
         serialize();
+        // send a redfish event
+        std::vector<std::string> messageArgs = {"LDAPServerURI", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
     {
@@ -439,6 +452,12 @@ std::string Config::ldapBindDN(std::string value)
         }
         // save the object.
         serialize();
+        // Send event.
+        std::vector<std::string> messageArgs = {"LDAPBindDN", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
     {
@@ -482,6 +501,12 @@ std::string Config::ldapBaseDN(std::string value)
         }
         // save the object.
         serialize();
+        // send a redfish event
+        std::vector<std::string> messageArgs = {"LDAPBaseDN", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
     {
@@ -562,6 +587,13 @@ bool Config::enableService(bool value)
         }
         parent.startOrStopService(nslcdService, value);
         serialize();
+        std::vector<std::string> messageArgs = {"Enabled",
+                                                std::to_string(value)};
+        // Send event.
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
     {
@@ -594,6 +626,12 @@ std::string Config::userNameAttribute(std::string value)
         }
         // save the object.
         serialize();
+        // Send event.
+        std::vector<std::string> messageArgs = {"UserNameAttribute", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
     {
@@ -626,6 +664,12 @@ std::string Config::groupNameAttribute(std::string value)
         }
         // save the object.
         serialize();
+        // send a redfish event
+        std::vector<std::string> messageArgs = {"GroupNameAttribute", value};
+        sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                  sdbusplus::xyz::openbmc_project::Logging::server::Entry::
+                      Level::Informational,
+                  messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
     {
@@ -636,6 +680,7 @@ std::string Config::groupNameAttribute(std::string value)
         log<level::ERR>(e.what());
         elog<InternalFailure>();
     }
+
     return val;
 }
 

@@ -36,6 +36,7 @@
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/log.hpp>
+#include <phosphor-logging/redfish_event_log.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
@@ -384,6 +385,9 @@ void UserMgr::createUser(std::string userName,
 
     log<level::INFO>("User created successfully",
                      entry("USER_NAME=%s", userName.c_str()));
+    // send an event
+    sendEvent(MESSAGE_TYPE::RESOURCE_CREATED, Entry::Level::Informational,
+              std::vector<std::string>{}, userObj);
     return;
 }
 
@@ -416,6 +420,13 @@ void UserMgr::deleteUser(std::string userName)
 
     log<level::INFO>("User deleted successfully",
                      entry("USER_NAME=%s", userName.c_str()));
+    // send an event
+    std::string dbusObjectPath = usersObjPath;
+    dbusObjectPath.push_back('/');
+    dbusObjectPath += userName;
+
+    sendEvent(MESSAGE_TYPE::RESOURCE_DELETED, Entry::Level::Informational,
+              std::vector<std::string>{}, dbusObjectPath);
     return;
 }
 
@@ -455,6 +466,13 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
         newUserName,
         std::move(std::make_unique<phosphor::user::Users>(
             bus, newUserObj.c_str(), groupNames, priv, enabled, *this)));
+    // send event.
+    std::string dbusObjectPath = usersObjPath;
+    dbusObjectPath.push_back('/');
+    dbusObjectPath += userName;
+    std::vector<std::string> messageArgs = {"UserName", newUserName};
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, dbusObjectPath);
     return;
 }
 
@@ -531,7 +549,14 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
         log<level::ERR>("Unable to set minPasswordLength");
         elog<InternalFailure>();
     }
-    return AccountPolicyIface::minPasswordLength(value);
+
+    auto ret = AccountPolicyIface::minPasswordLength(value);
+    // send event.
+    std::vector<std::string> messageArgs = {"MinPasswordLength",
+                                            std::to_string(value)};
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, usersObjPath);
+    return ret;
 }
 
 uint8_t UserMgr::rememberOldPasswordTimes(uint8_t value)
@@ -547,6 +572,7 @@ uint8_t UserMgr::rememberOldPasswordTimes(uint8_t value)
         log<level::ERR>("Unable to set rememberOldPasswordTimes");
         elog<InternalFailure>();
     }
+
     return AccountPolicyIface::rememberOldPasswordTimes(value);
 }
 
@@ -571,7 +597,14 @@ uint16_t UserMgr::maxLoginAttemptBeforeLockout(uint16_t value)
         log<level::ERR>("Unable to set maxLoginAttemptBeforeLockout");
         elog<InternalFailure>();
     }
-    return AccountPolicyIface::maxLoginAttemptBeforeLockout(value);
+
+    auto ret = AccountPolicyIface::maxLoginAttemptBeforeLockout(value);
+    // send a redfish event
+    std::vector<std::string> messageArgs = {"MaxLoginAttemptBeforeLockout",
+                                            std::to_string(value)};
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, usersObjPath);
+    return ret;
 }
 
 uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
@@ -597,8 +630,14 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
         log<level::ERR>("Unable to set unlockTimeout");
         elog<InternalFailure>();
     }
+    auto ret = AccountPolicyIface::accountUnlockTimeout(value);
 
-    return AccountPolicyIface::accountUnlockTimeout(value);
+    // send a redfish event
+    std::vector<std::string> messageArgs = {"AccountUnlockTimeout",
+                                            std::to_string(value)};
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, usersObjPath);
+    return ret;
 }
 
 int UserMgr::getPamModuleArgValue(const std::string& moduleName,
