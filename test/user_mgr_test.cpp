@@ -44,6 +44,16 @@ class TestUserMgr : public testing::Test
         sdbusplus::message::object_path tempObjPath(usersObjPath);
         tempObjPath /= userName;
         std::string userObj(tempObjPath);
+        if (enabled)
+        {
+            ON_CALL(mockManager, isUserEnabled)
+                .WillByDefault(testing::Return(true));
+        }
+        else
+        {
+            ON_CALL(mockManager, isUserEnabled)
+                .WillByDefault(testing::Return(false));
+        }
         mockManager.usersList.emplace(
             userName, std::make_unique<phosphor::user::Users>(
                           mockManager.bus, userObj.c_str(), groupNames, priv,
@@ -202,39 +212,23 @@ namespace
 {
 inline constexpr const char* objectRootInTest = "/xyz/openbmc_project/user";
 
-// Fake config; referenced config on real BMC
-inline constexpr const char* rawConfig = R"(
-#
-# /etc/pam.d/common-password - password-related modules common to all services
-#
-# This file is included from other service-specific PAM config files,
-# and should contain a list of modules that define the services to be
-# used to change user passwords.  The default is pam_unix.
-
-# Explanation of pam_unix options:
-#
-# The "sha512" option enables salted SHA512 passwords.  Without this option,
-# the default is Unix crypt.  Prior releases used the option "md5".
-#
-# The "obscure" option replaces the old `OBSCURE_CHECKS_ENAB' option in
-# login.defs.
-#
-# See the pam_unix manpage for other options.
-
-# here are the per-package modules (the "Primary" block)
-password	[success=ok default=die]	pam_tally2.so debug enforce_for_root reject_username minlen=8 difok=0 lcredit=0 ocredit=0 dcredit=0 ucredit=0 deny=2 unlock_time=3 #some comments
-password	[success=ok default=die]	pam_cracklib.so debug enforce_for_root reject_username minlen=8 difok=0 lcredit=0 ocredit=0 dcredit=0 ucredit=0 #some comments
-password	[success=ok default=die]	pam_ipmicheck.so spec_grp_name=ipmi use_authtok
-password	[success=ok ignore=ignore default=die]	pam_pwhistory.so debug enforce_for_root remember=0 use_authtok
-password	[success=ok default=die]	pam_unix.so sha512 use_authtok
-password	[success=1 default=die] 	pam_ipmisave.so spec_grp_name=ipmi spec_pass_file=/etc/ipmi_pass key_file=/etc/key_file
-# here's the fallback if no module succeeds
-password	requisite			pam_deny.so
-# prime the stack with a positive return value if there isn't one already;
-# this avoids us returning an error just because nothing sets a success code
-# since the modules above will each just jump around
-password	required			pam_permit.so
-# and here are more per-package modules (the "Additional" block)
+// Fake configs; referenced configs on real BMC
+inline constexpr const char* rawFailLockConfig = R"(
+deny=2
+unlock_time=3
+)";
+inline constexpr const char* rawPWHistoryConfig = R"(
+enforce_for_root
+remember=0
+)";
+inline constexpr const char* rawPWQualityConfig = R"(
+enforce_for_root
+minlen=8
+difok=0
+lcredit=0
+ocredit=0
+dcredit=0
+ucredit=0
 )";
 } // namespace
 
@@ -260,16 +254,41 @@ class UserMgrInTest : public testing::Test, public UserMgr
   public:
     UserMgrInTest() : UserMgr(busInTest, objectRootInTest)
     {
-        tempPamConfigFile = "/tmp/test-data-XXXXXX";
-        mktemp(tempPamConfigFile.data());
-        EXPECT_NO_THROW(dumpStringToFile(rawConfig, tempPamConfigFile));
+        tempFaillockConfigFile = "/tmp/test-data-XXXXXX";
+        mktemp(tempFaillockConfigFile.data());
+        EXPECT_NO_THROW(
+            dumpStringToFile(rawFailLockConfig, tempFaillockConfigFile));
+        tempPWHistoryConfigFile = "/tmp/test-data-XXXXXX";
+        mktemp(tempPWHistoryConfigFile.data());
+        EXPECT_NO_THROW(
+            dumpStringToFile(rawPWHistoryConfig, tempPWHistoryConfigFile));
+        tempPWQualityConfigFile = "/tmp/test-data-XXXXXX";
+        mktemp(tempPWQualityConfigFile.data());
+        EXPECT_NO_THROW(
+            dumpStringToFile(rawPWQualityConfig, tempPWQualityConfigFile));
         // Set config files to test files
-        pamPasswdConfigFile = tempPamConfigFile;
-        pamAuthConfigFile = tempPamConfigFile;
+        faillockConfigFile = tempFaillockConfigFile;
+        pwHistoryConfigFile = tempPWHistoryConfigFile;
+        pwQualityConfigFile = tempPWQualityConfigFile;
 
-        ON_CALL(*this, executeUserAdd).WillByDefault(testing::Return());
+        ON_CALL(*this, executeUserAdd(testing::_, testing::_, testing::_,
+                                      testing::Eq(true)))
+            .WillByDefault([this]() {
+            ON_CALL(*this, isUserEnabled).WillByDefault(testing::Return(true));
+            testing::Return();
+        });
+
+        ON_CALL(*this, executeUserAdd(testing::_, testing::_, testing::_,
+                                      testing::Eq(false)))
+            .WillByDefault([this]() {
+            ON_CALL(*this, isUserEnabled).WillByDefault(testing::Return(false));
+            testing::Return();
+        });
 
         ON_CALL(*this, executeUserDelete).WillByDefault(testing::Return());
+
+        ON_CALL(*this, executeUserClearFailRecords)
+            .WillByDefault(testing::Return());
 
         ON_CALL(*this, getIpmiUsersCount).WillByDefault(testing::Return(0));
 
@@ -278,8 +297,19 @@ class UserMgrInTest : public testing::Test, public UserMgr
         ON_CALL(*this, executeUserModify(testing::_, testing::_, testing::_))
             .WillByDefault(testing::Return());
 
-        ON_CALL(*this, executeUserModifyUserEnable)
-            .WillByDefault(testing::Return());
+        ON_CALL(*this,
+                executeUserModifyUserEnable(testing::_, testing::Eq(true)))
+            .WillByDefault([this]() {
+            ON_CALL(*this, isUserEnabled).WillByDefault(testing::Return(true));
+            testing::Return();
+        });
+
+        ON_CALL(*this,
+                executeUserModifyUserEnable(testing::_, testing::Eq(false)))
+            .WillByDefault([this]() {
+            ON_CALL(*this, isUserEnabled).WillByDefault(testing::Return(false));
+            testing::Return();
+        });
 
         ON_CALL(*this, executeGroupCreation(testing::_))
             .WillByDefault(testing::Return());
@@ -294,13 +324,17 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
     ~UserMgrInTest() override
     {
-        EXPECT_NO_THROW(removeFile(tempPamConfigFile));
+        EXPECT_NO_THROW(removeFile(tempFaillockConfigFile));
+        EXPECT_NO_THROW(removeFile(tempPWHistoryConfigFile));
+        EXPECT_NO_THROW(removeFile(tempPWQualityConfigFile));
     }
 
     MOCK_METHOD(void, executeUserAdd, (const char*, const char*, bool, bool),
                 (override));
 
     MOCK_METHOD(void, executeUserDelete, (const char*), (override));
+
+    MOCK_METHOD(void, executeUserClearFailRecords, (const char*), (override));
 
     MOCK_METHOD(size_t, getIpmiUsersCount, (), (override));
 
@@ -320,54 +354,169 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
     MOCK_METHOD(void, executeGroupDeletion, (const char*), (override));
 
+    MOCK_METHOD(bool, isUserEnabled, (const std::string& userName), (override));
+
   protected:
     static sdbusplus::bus_t busInTest;
-    std::string tempPamConfigFile;
+    std::string tempFaillockConfigFile;
+    std::string tempPWHistoryConfigFile;
+    std::string tempPWQualityConfigFile;
 };
 
 sdbusplus::bus_t UserMgrInTest::busInTest = sdbusplus::bus::new_default();
 
-TEST_F(UserMgrInTest, GetPamModuleArgValueOnSuccess)
+TEST_F(UserMgrInTest, GetPamModuleConfValueOnSuccess)
 {
-    std::string minLen;
-    EXPECT_EQ(getPamModuleArgValue("pam_tally2.so", "minlen", minLen), 0);
-    EXPECT_EQ(minLen, "8");
-    EXPECT_EQ(getPamModuleArgValue("pam_cracklib.so", "minlen", minLen), 0);
-    EXPECT_EQ(minLen, "8");
+    std::string minlen;
+    EXPECT_EQ(getPamModuleConfValue(tempPWQualityConfigFile, "minlen", minlen),
+              0);
+    EXPECT_EQ(minlen, "8");
+    std::string deny;
+    EXPECT_EQ(getPamModuleConfValue(tempFaillockConfigFile, "deny", deny), 0);
+    EXPECT_EQ(deny, "2");
+    std::string remember;
+    EXPECT_EQ(
+        getPamModuleConfValue(tempPWHistoryConfigFile, "remember", remember),
+        0);
+    EXPECT_EQ(remember, "0");
 }
 
-TEST_F(UserMgrInTest, SetPamModuleArgValueOnSuccess)
+TEST_F(UserMgrInTest, SetPamModuleConfValueOnSuccess)
 {
-    EXPECT_EQ(setPamModuleArgValue("pam_cracklib.so", "minlen", "16"), 0);
-    EXPECT_EQ(setPamModuleArgValue("pam_tally2.so", "minlen", "16"), 0);
-    std::string minLen;
-    EXPECT_EQ(getPamModuleArgValue("pam_tally2.so", "minlen", minLen), 0);
-    EXPECT_EQ(minLen, "16");
-    EXPECT_EQ(getPamModuleArgValue("pam_cracklib.so", "minlen", minLen), 0);
-    EXPECT_EQ(minLen, "16");
+    EXPECT_EQ(setPamModuleConfValue(tempPWQualityConfigFile, "minlen", "16"),
+              0);
+    std::string minlen;
+    EXPECT_EQ(getPamModuleConfValue(tempPWQualityConfigFile, "minlen", minlen),
+              0);
+    EXPECT_EQ(minlen, "16");
+
+    EXPECT_EQ(setPamModuleConfValue(tempFaillockConfigFile, "deny", "3"), 0);
+    std::string deny;
+    EXPECT_EQ(getPamModuleConfValue(tempFaillockConfigFile, "deny", deny), 0);
+    EXPECT_EQ(deny, "3");
+
+    EXPECT_EQ(setPamModuleConfValue(tempPWHistoryConfigFile, "remember", "1"),
+              0);
+    std::string remember;
+    EXPECT_EQ(
+        getPamModuleConfValue(tempPWHistoryConfigFile, "remember", remember),
+        0);
+    EXPECT_EQ(remember, "1");
 }
 
-TEST_F(UserMgrInTest, GetPamModuleArgValueOnFailure)
+TEST_F(UserMgrInTest, SetPamModuleConfValueTempFileOnSuccess)
 {
-    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPamConfigFile));
-    std::string minLen;
-    EXPECT_EQ(getPamModuleArgValue("pam_tally2.so", "minlen", minLen), -1);
-    EXPECT_EQ(getPamModuleArgValue("pam_cracklib.so", "minlen", minLen), -1);
+    EXPECT_EQ(setPamModuleConfValue(tempPWQualityConfigFile, "minlen", "16"),
+              0);
 
-    EXPECT_NO_THROW(removeFile(tempPamConfigFile));
-    EXPECT_EQ(getPamModuleArgValue("pam_tally2.so", "minlen", minLen), -1);
-    EXPECT_EQ(getPamModuleArgValue("pam_cracklib.so", "minlen", minLen), -1);
+    std::string tmpFile = tempPWQualityConfigFile + "_tmp";
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
+
+    EXPECT_EQ(setPamModuleConfValue(tempFaillockConfigFile, "deny", "3"), 0);
+
+    tmpFile = tempFaillockConfigFile + "_tmp";
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
+
+    EXPECT_EQ(setPamModuleConfValue(tempPWHistoryConfigFile, "remember", "1"),
+              0);
+
+    tmpFile = tempPWHistoryConfigFile + "_tmp";
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
 }
 
-TEST_F(UserMgrInTest, SetPamModuleArgValueOnFailure)
+TEST_F(UserMgrInTest, GetPamModuleConfValueOnFailure)
 {
-    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPamConfigFile));
-    EXPECT_EQ(setPamModuleArgValue("pam_cracklib.so", "minlen", "16"), -1);
-    EXPECT_EQ(setPamModuleArgValue("pam_tally2.so", "minlen", "16"), -1);
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWQualityConfigFile));
+    std::string minlen;
+    EXPECT_EQ(getPamModuleConfValue(tempPWQualityConfigFile, "minlen", minlen),
+              -1);
 
-    EXPECT_NO_THROW(removeFile(tempPamConfigFile));
-    EXPECT_EQ(setPamModuleArgValue("pam_cracklib.so", "minlen", "16"), -1);
-    EXPECT_EQ(setPamModuleArgValue("pam_tally2.so", "minlen", "16"), -1);
+    EXPECT_NO_THROW(removeFile(tempPWQualityConfigFile));
+    EXPECT_EQ(getPamModuleConfValue(tempPWQualityConfigFile, "minlen", minlen),
+              -1);
+
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempFaillockConfigFile));
+    std::string deny;
+    EXPECT_EQ(getPamModuleConfValue(tempFaillockConfigFile, "deny", deny), -1);
+
+    EXPECT_NO_THROW(removeFile(tempFaillockConfigFile));
+    EXPECT_EQ(getPamModuleConfValue(tempFaillockConfigFile, "deny", deny), -1);
+
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWHistoryConfigFile));
+    std::string remember;
+    EXPECT_EQ(
+        getPamModuleConfValue(tempPWHistoryConfigFile, "remember", remember),
+        -1);
+
+    EXPECT_NO_THROW(removeFile(tempPWHistoryConfigFile));
+    EXPECT_EQ(
+        getPamModuleConfValue(tempPWHistoryConfigFile, "remember", remember),
+        -1);
+}
+
+TEST_F(UserMgrInTest, SetPamModuleConfValueOnFailure)
+{
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWQualityConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWQualityConfigFile, "minlen", "16"),
+              -1);
+
+    EXPECT_NO_THROW(removeFile(tempPWQualityConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWQualityConfigFile, "minlen", "16"),
+              -1);
+
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempFaillockConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempFaillockConfigFile, "deny", "3"), -1);
+
+    EXPECT_NO_THROW(removeFile(tempFaillockConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempFaillockConfigFile, "deny", "3"), -1);
+
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWHistoryConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWHistoryConfigFile, "remember", "1"),
+              -1);
+
+    EXPECT_NO_THROW(removeFile(tempPWHistoryConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWHistoryConfigFile, "remember", "1"),
+              -1);
+}
+
+TEST_F(UserMgrInTest, SetPamModuleConfValueTempFileOnFailure)
+{
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWQualityConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWQualityConfigFile, "minlen", "16"),
+              -1);
+
+    std::string tmpFile = tempPWQualityConfigFile + "_tmp";
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
+
+    EXPECT_NO_THROW(removeFile(tempPWQualityConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWQualityConfigFile, "minlen", "16"),
+              -1);
+
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
+
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempFaillockConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempFaillockConfigFile, "deny", "3"), -1);
+
+    tmpFile = tempFaillockConfigFile + "_tmp";
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
+
+    EXPECT_NO_THROW(removeFile(tempFaillockConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempFaillockConfigFile, "deny", "3"), -1);
+
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
+
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWHistoryConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWHistoryConfigFile, "remember", "1"),
+              -1);
+
+    tmpFile = tempPWHistoryConfigFile + "_tmp";
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
+
+    EXPECT_NO_THROW(removeFile(tempPWHistoryConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempPWHistoryConfigFile, "remember", "1"),
+              -1);
+
+    EXPECT_FALSE(std::filesystem::exists(tmpFile));
 }
 
 TEST_F(UserMgrInTest, IsUserExistEmptyInputThrowsError)
@@ -469,6 +618,23 @@ TEST_F(UserMgrInTest, DeleteUserThrowsInternalFailureWhenExecuteUserDeleteFails)
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
 }
 
+TEST_F(UserMgrInTest,
+       DeleteUserThrowsInternalFailureWhenExecuteUserClearFailRecords)
+{
+    const char* username = "user";
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+    EXPECT_CALL(*this, executeUserClearFailRecords(testing::StrEq(username)))
+        .WillOnce(testing::Throw(
+            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()))
+        .WillOnce(testing::DoDefault());
+
+    EXPECT_THROW(
+        deleteUser(username),
+        sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+}
+
 TEST_F(UserMgrInTest, ThrowForInvalidPrivilegeThrowsWhenPrivilegeIsInvalid)
 {
     EXPECT_THROW(
@@ -496,6 +662,7 @@ TEST_F(UserMgrInTest, ThrowForInvalidGroupsNoThrowWhenGroupIsValid)
     EXPECT_NO_THROW(throwForInvalidGroups({"ssh"}));
     EXPECT_NO_THROW(throwForInvalidGroups({"redfish"}));
     EXPECT_NO_THROW(throwForInvalidGroups({"web"}));
+    EXPECT_NO_THROW(throwForInvalidGroups({"hostconsole"}));
 }
 
 TEST_F(UserMgrInTest, RenameUserOnSuccess)
@@ -596,13 +763,13 @@ TEST_F(UserMgrInTest, MinPasswordLengthReturnsIfValueIsTheSame)
 }
 
 TEST_F(UserMgrInTest,
-       MinPasswordLengthRejectsTooShortPasswordWithInvalidArgument)
+       MinPasswordLengthRejectsTooShortPasswordWithNotAllowed)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
     EXPECT_THROW(
         UserMgr::minPasswordLength(minPasswdLength - 1),
-        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
 }
 
@@ -616,7 +783,7 @@ TEST_F(UserMgrInTest, MinPasswordLengthOnSuccess)
 
 TEST_F(UserMgrInTest, MinPasswordLengthOnFailure)
 {
-    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPamConfigFile));
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWQualityConfigFile));
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
     EXPECT_THROW(
@@ -645,7 +812,7 @@ TEST_F(UserMgrInTest, RememberOldPasswordTimesOnSuccess)
 
 TEST_F(UserMgrInTest, RememberOldPasswordTimesOnFailure)
 {
-    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPamConfigFile));
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPWHistoryConfigFile));
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::rememberOldPasswordTimes(), 0);
     EXPECT_THROW(
@@ -672,19 +839,21 @@ TEST_F(UserMgrInTest, MaxLoginAttemptBeforeLockoutOnSuccess)
 
 TEST_F(UserMgrInTest, MaxLoginAttemptBeforeLockoutOnFailure)
 {
-    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPamConfigFile));
     initializeAccountPolicy();
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempFaillockConfigFile));
     EXPECT_THROW(
         UserMgr::maxLoginAttemptBeforeLockout(16),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
-    EXPECT_EQ(AccountPolicyIface::rememberOldPasswordTimes(), 0);
+    EXPECT_EQ(AccountPolicyIface::maxLoginAttemptBeforeLockout(), 2);
 }
 
 TEST_F(UserMgrInTest, AccountUnlockTimeoutReturnsIfValueIsTheSame)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
-    UserMgr::accountUnlockTimeout(3);
+    EXPECT_THROW(
+        UserMgr::accountUnlockTimeout(3),
+        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
@@ -692,17 +861,19 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutOnSuccess)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
-    UserMgr::accountUnlockTimeout(16);
-    EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 16);
+    EXPECT_THROW(
+        UserMgr::accountUnlockTimeout(16),
+        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
 TEST_F(UserMgrInTest, AccountUnlockTimeoutOnFailure)
 {
     initializeAccountPolicy();
-    EXPECT_NO_THROW(dumpStringToFile("whatever", tempPamConfigFile));
+    EXPECT_NO_THROW(dumpStringToFile("whatever", tempFaillockConfigFile));
     EXPECT_THROW(
         UserMgr::accountUnlockTimeout(16),
-        sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
+        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
@@ -719,6 +890,20 @@ TEST_F(UserMgrInTest, UserEnableOnSuccess)
     userInfo = getUserInfo(username);
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), false);
 
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+}
+
+TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
+{
+    std::string username = "user001";
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"hostconsole"}, "priv-user", true));
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"hostconsole"}, "priv-admin", true));
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"hostconsole"}, "priv-operator", true));
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
 }
 
@@ -757,10 +942,11 @@ TEST_F(UserMgrInTest, UserLockedForFailedAttemptZeroFailuresReturnsFalse)
     std::string username = "user001";
     initializeAccountPolicy();
     // Example output from BMC
-    // root@s7106:~# pam_tally2 -u root
-    // Login           Failures Latest failure     From
-    // root                0
-    std::vector<std::string> output = {"whatever", "root\t0"};
+    // root:~# faillock --user root
+    // root:
+    // When   Type   Source   Valid
+    std::vector<std::string> output = {"whatever",
+                                       "When   Type   Source   Valid"};
     EXPECT_CALL(*this, getFailedAttempt(testing::StrEq(username.c_str())))
         .WillOnce(testing::Return(output));
 
@@ -781,34 +967,6 @@ TEST_F(UserMgrInTest, UserLockedForFailedAttemptFailIfGetFailedAttemptFail)
 }
 
 TEST_F(UserMgrInTest,
-       UserLockedForFailedAttemptThrowsInternalFailureIfFailAttemptsOutOfRange)
-{
-    std::string username = "user001";
-    initializeAccountPolicy();
-    std::vector<std::string> output = {"whatever", "root\t1000000"};
-    EXPECT_CALL(*this, getFailedAttempt(testing::StrEq(username.c_str())))
-        .WillOnce(testing::Return(output));
-
-    EXPECT_THROW(
-        userLockedForFailedAttempt(username),
-        sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
-}
-
-TEST_F(UserMgrInTest,
-       UserLockedForFailedAttemptThrowsInternalFailureIfNoFailDateTime)
-{
-    std::string username = "user001";
-    initializeAccountPolicy();
-    std::vector<std::string> output = {"whatever", "root\t2"};
-    EXPECT_CALL(*this, getFailedAttempt(testing::StrEq(username.c_str())))
-        .WillOnce(testing::Return(output));
-
-    EXPECT_THROW(
-        userLockedForFailedAttempt(username),
-        sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
-}
-
-TEST_F(UserMgrInTest,
        UserLockedForFailedAttemptThrowsInternalFailureIfWrongDateFormat)
 {
     std::string username = "user001";
@@ -816,7 +974,7 @@ TEST_F(UserMgrInTest,
 
     // Choose a date in the past.
     std::vector<std::string> output = {"whatever",
-                                       "root\t2\t10/24/2002\t00:00:00"};
+                                       "10/24/2002 00:00:00 type source V"};
     EXPECT_CALL(*this, getFailedAttempt(testing::StrEq(username.c_str())))
         .WillOnce(testing::Return(output));
 
@@ -833,7 +991,7 @@ TEST_F(UserMgrInTest,
 
     // Choose a date in the past.
     std::vector<std::string> output = {"whatever",
-                                       "root\t2\t10/24/02\t00:00:00"};
+                                       "2002-10-24 00:00:00 type source V"};
     EXPECT_CALL(*this, getFailedAttempt(testing::StrEq(username.c_str())))
         .WillOnce(testing::Return(output));
 
@@ -881,7 +1039,6 @@ TEST_F(
     UserMgrInTest,
     CheckAndThrowForDisallowedGroupCreationThrowsIfGroupNameHasDisallowedCharacters)
 {
-
     EXPECT_THROW(
         checkAndThrowForDisallowedGroupCreation("openbmc_rfp_?owerService"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
@@ -894,7 +1051,6 @@ TEST_F(
     UserMgrInTest,
     CheckAndThrowForDisallowedGroupCreationThrowsIfGroupNameHasDisallowedPrefix)
 {
-
     EXPECT_THROW(
         checkAndThrowForDisallowedGroupCreation("google_rfp_"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
@@ -905,8 +1061,10 @@ TEST_F(
 
 TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
 {
-    EXPECT_THAT(allGroups().size(), 4);
-    for (size_t i = 0; i < maxSystemGroupCount - 4; ++i)
+    constexpr size_t predefGroupCount = 5;
+
+    EXPECT_THAT(allGroups().size(), predefGroupCount);
+    for (size_t i = 0; i < maxSystemGroupCount - predefGroupCount; ++i)
     {
         std::string groupName = "openbmc_rfr_role";
         groupName += std::to_string(i);
@@ -915,7 +1073,7 @@ TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
     EXPECT_THROW(
         createGroup("openbmc_rfr_AnotherRole"),
         sdbusplus::xyz::openbmc_project::User::Common::Error::NoResource);
-    for (size_t i = 0; i < maxSystemGroupCount - 4; ++i)
+    for (size_t i = 0; i < maxSystemGroupCount - predefGroupCount; ++i)
     {
         std::string groupName = "openbmc_rfr_role";
         groupName += std::to_string(i);
@@ -936,7 +1094,27 @@ TEST_F(UserMgrInTest, CheckAndThrowForGroupExist)
 TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
 {
     EXPECT_THAT(allGroups(),
-                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh"));
+                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh",
+                                              "hostconsole"));
+}
+
+TEST_F(UserMgrInTest, AddGroupThrowsIfPreDefinedGroupAdd)
+{
+    EXPECT_THROW(
+        createGroup("ipmi"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
+    EXPECT_THROW(
+        createGroup("web"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
+    EXPECT_THROW(
+        createGroup("redfish"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
+    EXPECT_THROW(
+        createGroup("ssh"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
+    EXPECT_THROW(
+        createGroup("hostconsole"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
 }
 
 TEST_F(UserMgrInTest, DeleteGroupThrowsIfGroupIsNotAllowedToChange)
@@ -952,6 +1130,9 @@ TEST_F(UserMgrInTest, DeleteGroupThrowsIfGroupIsNotAllowedToChange)
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         deleteGroup("ssh"),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+    EXPECT_THROW(
+        deleteGroup("hostconsole"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 }
 
@@ -992,7 +1173,8 @@ TEST_F(UserMgrInTest, CheckAndThrowForGroupNotExist)
 TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
 {
     EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
-                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh"));
+                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh",
+                                              "hostconsole"));
 }
 
 } // namespace user

@@ -33,7 +33,7 @@
 #include <boost/algorithm/string/split.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
-#include <phosphor-logging/log.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
@@ -47,7 +47,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
 namespace phosphor
 {
 namespace user
@@ -62,23 +61,28 @@ static constexpr int failure = -1;
 
 static constexpr uint32_t accUnlockTimeout = ACCOUNT_UNLOCK_TIMEOUT;
 static constexpr uint16_t maxFailedAttempts = MAX_FAILED_LOGIN_ATTEMPTS;
-static constexpr uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
+uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
 
 // pam modules related
-static constexpr const char* pamCrackLib = "pam_cracklib.so";
-static constexpr const char* pamTally2 = "pam_tally2.so";
-static constexpr const char* pamPWHistory = "pam_pwhistory.so";
-static constexpr const char* pamAuthConfigFile = "/etc/pam.d/common-auth";
-static constexpr const char* pamPasswdConfigFile = "/etc/pam.d/common-password";
-static constexpr const char* remOldPasswdCount = "remember";
-static constexpr const char* maxFailedAttemptsProp = "deny";
-static constexpr const char* unlockTimeoutProp = "unlock_time";
-static constexpr const char* rootUnlockTimeoutProp = "root_unlock_time";
-static constexpr const char* minPasswdLengthProp = "minlen";
+static constexpr const char* minPasswdLenProp = "minlen";
 static constexpr const char* minLcaseCharsProp = "lcredit";
 static constexpr const char* minUcaseCharsProp = "ucredit";
 static constexpr const char* minDigitProp = "dcredit";
 static constexpr const char* minSpecCharsProp = "ocredit";
+static constexpr const char* minClassProp = "minclass";
+
+static constexpr const char* remOldPasswdCount = "remember";
+static constexpr const char* maxFailedAttempt = "deny";
+static constexpr const char* unlockTimeout = "unlock_time";
+static constexpr const char* rootUnlockTimeoutProp = "root_unlock_time";
+
+
+static constexpr const char* defaultFaillockConfigFile =
+    "/etc/security/faillock.conf";
+static constexpr const char* defaultPWHistoryConfigFile =
+    "/etc/security/pwhistory.conf";
+static constexpr const char* defaultPWQualityConfigFile =
+    "/etc/security/pwquality.conf";
 
 // Object Manager related
 static constexpr const char* ldapMgrObjBasePath =
@@ -99,7 +103,8 @@ using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
 using InvalidArgument =
     sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument;
-using NotAllowed = sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
+using NotAllowed =
+    sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
 using Reason = xyz::openbmc_project::Common::NotAllowed::REASON;
 using UserNameExists =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameExists;
@@ -109,7 +114,6 @@ using UserNameGroupFail =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameGroupFail;
 using NoResource =
     sdbusplus::xyz::openbmc_project::User::Common::Error::NoResource;
-
 using Argument = xyz::openbmc_project::Common::InvalidArgument;
 using GroupNameExists =
     sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists;
@@ -120,8 +124,8 @@ namespace
 {
 
 // The hardcoded groups in OpenBMC projects
-constexpr std::array<const char*, 4> predefinedGroups = {"web", "redfish",
-                                                         "ipmi", "ssh"};
+constexpr std::array<const char*, 5> predefinedGroups = {
+    "web", "redfish", "ipmi", "ssh", "hostconsole"};
 
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
@@ -148,8 +152,8 @@ void checkAndThrowsForGroupChangeAllowed(const std::string& groupName)
     }
     if (!allowed)
     {
-        log<level::ERR>("Invalid group name; not in the allowed list",
-                        entry("GroupName=%s", groupName.c_str()));
+        lg2::error("Group name '{GROUP}' is not in the allowed list", "GROUP",
+                   groupName);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
                               Argument::ARGUMENT_VALUE(groupName.c_str()));
     }
@@ -165,10 +169,10 @@ std::string getCSVFromVector(std::span<const std::string> vec)
     }
     return std::accumulate(std::next(vec.begin()), vec.end(), vec[0],
                            [](std::string&& val, std::string_view element) {
-                               val += ',';
-                               val += element;
-                               return val;
-                           });
+        val += ',';
+        val += element;
+        return val;
+    });
 }
 
 bool removeStringFromCSV(std::string& csvStr, const std::string& delStr)
@@ -194,7 +198,7 @@ bool UserMgr::isUserExist(const std::string& userName)
 {
     if (userName.empty())
     {
-        log<level::ERR>("User name is empty");
+        lg2::error("User name is empty");
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
                               Argument::ARGUMENT_VALUE("Null"));
     }
@@ -209,26 +213,11 @@ void UserMgr::throwForUserDoesNotExist(const std::string& userName)
 {
     if (!isUserExist(userName))
     {
-        log<level::ERR>("User does not exist",
-                        entry("USER_NAME=%s", userName.c_str()));
+        lg2::error("User '{USERNAME}' does not exist", "USERNAME", userName);
         elog<UserNameDoesNotExist>();
     }
 }
 
-void UserMgr::throwForDeleteUserInServiceGroup(const std::string& userName)
-{
-    const auto& user = usersList[userName];
-    std::vector<std::string> groupLists = user.get()->userGroups();
-    if (std::find(groupLists.begin(), groupLists.end(), "service") !=
-        groupLists.end())
-    {
-        log<level::ERR>("Not allowed to delete user belongs to service group",
-                        entry("USER_NAME=%s", userName.c_str()));
-        elog<NotAllowed>(
-            Reason("service group users are pre configured on the device"
-                   "therefore can't be deleted"));
-    }
-}
 void UserMgr::checkAndThrowForDisallowedGroupCreation(
     const std::string& groupName)
 {
@@ -236,20 +225,31 @@ void UserMgr::checkAndThrowForDisallowedGroupCreation(
         !std::regex_match(groupName.c_str(),
                           std::regex("[a-zA-z_][a-zA-Z_0-9]*")))
     {
-        log<level::ERR>("Invalid group name",
-                        entry("GroupName=%s", groupName.c_str()));
+        lg2::error("Invalid group name '{GROUP}'", "GROUP", groupName);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
                               Argument::ARGUMENT_VALUE(groupName.c_str()));
     }
     checkAndThrowsForGroupChangeAllowed(groupName);
 }
 
+void UserMgr::throwForDeleteUserInServiceGroup(const std::string& userName)
+{
+    const auto& user = usersList[userName];
+    std::vector<std::string> groupLists = user.get()->userGroups();
+    if(std::find(groupLists.begin(), groupLists.end(), "service") != groupLists.end())
+    {
+        log<level::ERR>("Not allowed to delete user belongs to service group",
+                        entry("USER_NAME=%s", userName.c_str()));
+	elog<NotAllowed>(Reason("service group users are pre configured on the device"
+                                  "therefore can't be deleted"));
+    }
+}
+
 void UserMgr::throwForUserExists(const std::string& userName)
 {
     if (isUserExist(userName))
     {
-        log<level::ERR>("User already exists",
-                        entry("USER_NAME=%s", userName.c_str()));
+        lg2::error("User '{USERNAME}' already exists", "USERNAME", userName);
         elog<UserNameExists>();
     }
 }
@@ -262,8 +262,10 @@ void UserMgr::throwForUserNameConstraints(
     {
         if (userName.length() > ipmiMaxUserNameLen)
         {
-            log<level::ERR>("IPMI user name length limitation",
-                            entry("SIZE=%d", userName.length()));
+            lg2::error("User '{USERNAME}' exceeds IPMI username length limit "
+                       "({LENGTH} > {LIMIT})",
+                       "USERNAME", userName, "LENGTH", userName.length(),
+                       "LIMIT", ipmiMaxUserNameLen);
             elog<UserNameGroupFail>(
                 xyz::openbmc_project::User::Common::UserNameGroupFail::REASON(
                     "IPMI length"));
@@ -271,16 +273,17 @@ void UserMgr::throwForUserNameConstraints(
     }
     if (userName.length() > systemMaxUserNameLen)
     {
-        log<level::ERR>("User name length limitation",
-                        entry("SIZE=%d", userName.length()));
+        lg2::error("User '{USERNAME}' exceeds system username length limit "
+                   "({LENGTH} > {LIMIT})",
+                   "USERNAME", userName, "LENGTH", userName.length(), "LIMIT",
+                   systemMaxUserNameLen);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
                               Argument::ARGUMENT_VALUE("Invalid length"));
     }
     if (!std::regex_match(userName.c_str(),
                           std::regex("[a-zA-z_][a-zA-Z_0-9]*")))
     {
-        log<level::ERR>("Invalid user name",
-                        entry("USER_NAME=%s", userName.c_str()));
+        lg2::error("Invalid username '{USERNAME}'", "USERNAME", userName);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
                               Argument::ARGUMENT_VALUE("Invalid data"));
     }
@@ -294,21 +297,33 @@ void UserMgr::throwForMaxGrpUserCount(
     {
         if (getIpmiUsersCount() >= ipmiMaxUsers)
         {
-            log<level::ERR>("IPMI user limit reached");
+            lg2::error("IPMI user limit reached");
             elog<NoResource>(
                 xyz::openbmc_project::User::Common::NoResource::REASON(
-                    "ipmi user count reached"));
+                    "IPMI user limit reached"));
+        }
+    }
+    else if (std::find(groupNames.begin(), groupNames.end(),
+                       "redfish-hostiface") != groupNames.end())
+    {
+        if (getRedfishHostInterfaceUsersCount() >= redfishHostInterfaceUsers)
+        {
+            log<level::ERR>("Redfish Host Interface user limit reached");
+            elog<NoResource>(
+                xyz::openbmc_project::User::Common::NoResource::REASON(
+                    "redfish host interface user count reached"));
         }
     }
     else
     {
-        if (usersList.size() > 0 && (usersList.size() - getIpmiUsersCount()) >=
-                                        (maxSystemUsers - ipmiMaxUsers))
+        if (usersList.size() > 0 && (usersList.size() - getIpmiUsersCount() -
+                    getRedfishHostInterfaceUsersCount()) >=
+                                        (maxSystemUsers - ipmiMaxUsers - redfishHostInterfaceUsers))
         {
-            log<level::ERR>("Non-ipmi User limit reached");
+            lg2::error("Non-ipmi-rfhi User limit reached");
             elog<NoResource>(
                 xyz::openbmc_project::User::Common::NoResource::REASON(
-                    "Non-ipmi user count reached"));
+                    "Non-ipmi-rfhi user limit reached"));
         }
     }
     return;
@@ -319,7 +334,7 @@ void UserMgr::throwForInvalidPrivilege(const std::string& priv)
     if (!priv.empty() &&
         (std::find(privMgr.begin(), privMgr.end(), priv) == privMgr.end()))
     {
-        log<level::ERR>("Invalid privilege");
+        lg2::error("Invalid privilege '{PRIVILEGE}'", "PRIVILEGE", priv);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Privilege"),
                               Argument::ARGUMENT_VALUE(priv.c_str()));
     }
@@ -332,7 +347,7 @@ void UserMgr::throwForInvalidGroups(const std::vector<std::string>& groupNames)
         if (std::find(groupsMgr.begin(), groupsMgr.end(), group) ==
             groupsMgr.end())
         {
-            log<level::ERR>("Invalid Group Name listed");
+            lg2::error("Invalid Group Name '{GROUPNAME}'", "GROUPNAME", group);
             elog<InvalidArgument>(Argument::ARGUMENT_NAME("GroupName"),
                                   Argument::ARGUMENT_VALUE(group.c_str()));
         }
@@ -394,7 +409,8 @@ void UserMgr::createUser(std::string userName,
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Unable to create new user");
+        lg2::error("Unable to create new user '{USERNAME}'", "USERNAME",
+                   userName);
         elog<InternalFailure>();
     }
 
@@ -407,8 +423,7 @@ void UserMgr::createUser(std::string userName,
         userName, std::make_unique<phosphor::user::Users>(
                       bus, userObj.c_str(), groupNames, priv, enabled, *this));
 
-    log<level::INFO>("User created successfully",
-                     entry("USER_NAME=%s", userName.c_str()));
+    lg2::info("User '{USERNAME}' created successfully", "USERNAME", userName);
     return;
 }
 
@@ -426,21 +441,23 @@ void UserMgr::deleteUser(std::string userName)
                                 "therefore can't be deleted"));
         return;
     }
+
     try
     {
+        // Clear user fail records
+        executeUserClearFailRecords(userName.c_str());
+
         executeUserDelete(userName.c_str());
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("User delete failed",
-                        entry("USER_NAME=%s", userName.c_str()));
+        lg2::error("Delete User '{USERNAME}' failed", "USERNAME", userName);
         elog<InternalFailure>();
     }
 
     usersList.erase(userName);
 
-    log<level::INFO>("User deleted successfully",
-                     entry("USER_NAME=%s", userName.c_str()));
+    lg2::info("User '{USERNAME}' deleted successfully", "USERNAME", userName);
     return;
 }
 
@@ -449,8 +466,7 @@ void UserMgr::checkDeleteGroupConstraints(const std::string& groupName)
     if (std::find(groupsMgr.begin(), groupsMgr.end(), groupName) ==
         groupsMgr.end())
     {
-        log<level::ERR>("Group already exists",
-                        entry("GROUP_NAME=%s", groupName.c_str()));
+        lg2::error("Group '{GROUP}' already exists", "GROUP", groupName);
         elog<GroupNameDoesNotExists>();
     }
     checkAndThrowsForGroupChangeAllowed(groupName);
@@ -465,15 +481,13 @@ void UserMgr::deleteGroup(std::string groupName)
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Group delete failed",
-                        entry("GROUP_NAME=%s", groupName.c_str()));
+        lg2::error("Failed to delete group '{GROUP}'", "GROUP", groupName);
         elog<InternalFailure>();
     }
 
     groupsMgr.erase(std::find(groupsMgr.begin(), groupsMgr.end(), groupName));
     UserMgrIface::allGroups(groupsMgr);
-    log<level::INFO>("Group deleted successfully",
-                     entry("GROUP_NAME=%s", groupName.c_str()));
+    lg2::info("Successfully deleted group '{GROUP}'", "GROUP", groupName);
 }
 
 void UserMgr::checkCreateGroupConstraints(const std::string& groupName)
@@ -481,14 +495,13 @@ void UserMgr::checkCreateGroupConstraints(const std::string& groupName)
     if (std::find(groupsMgr.begin(), groupsMgr.end(), groupName) !=
         groupsMgr.end())
     {
-        log<level::ERR>("Group already exists",
-                        entry("GROUP_NAME=%s", groupName.c_str()));
+        lg2::error("Group '{GROUP}' already exists", "GROUP", groupName);
         elog<GroupNameExists>();
     }
     checkAndThrowForDisallowedGroupCreation(groupName);
     if (groupsMgr.size() >= maxSystemGroupCount)
     {
-        log<level::ERR>("Group limit reached");
+        lg2::error("Group limit reached");
         elog<NoResource>(xyz::openbmc_project::User::Common::NoResource::REASON(
             "Group limit reached"));
     }
@@ -503,8 +516,7 @@ void UserMgr::createGroup(std::string groupName)
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Group create failed",
-                        entry("GROUP_NAME=%s", groupName.c_str()));
+        lg2::error("Failed to create group '{GROUP}'", "GROUP", groupName);
         elog<InternalFailure>();
     }
     groupsMgr.push_back(groupName);
@@ -525,8 +537,8 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("User rename failed",
-                        entry("USER_NAME=%s", userName.c_str()));
+        lg2::error("Rename '{USERNAME}' to '{NEWUSERNAME}' failed", "USERNAME",
+                   userName, "NEWUSERNAME", newUserName);
         elog<InternalFailure>();
     }
     const auto& user = usersList[userName];
@@ -589,33 +601,38 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Unable to modify user privilege / groups");
+        lg2::error(
+            "Unable to modify user privilege / groups for user '{USERNAME}'",
+            "USERNAME", userName);
         elog<InternalFailure>();
     }
 
-    log<level::INFO>("User groups / privilege updated successfully",
-                     entry("USER_NAME=%s", userName.c_str()));
     std::sort(groupNames.begin(), groupNames.end());
     usersList[userName]->setUserGroups(groupNames);
     usersList[userName]->setUserPrivilege(priv);
-    return;
+    lg2::info("User '{USERNAME}' groups / privilege updated successfully",
+              "USERNAME", userName);
 }
 
 uint8_t UserMgr::minPasswordLength(uint8_t value)
 {
     if (value < minPasswdLength)
     {
-        value = minPasswdLength;
+        log<level::ERR>("Setting value lesser than "
+                        " MIN_PASSWORD_LENGTH is not allowed");
+        elog<NotAllowed>(Reason("Setting value lesser than "
+                                "MIN_PASSWORD_LENGTH value"
+                                "is not allowed"));
     }
     if (value == AccountPolicyIface::minPasswordLength())
     {
         return value;
     }
-    if (setPamModuleArgValue(pamCrackLib, minPasswdLengthProp,
-                             std::to_string(static_cast<int>(value))) !=
-        success)
+    if (setPamModuleConfValue(pwQualityConfigFile, minPasswdLenProp,
+                              std::to_string(value)) != success)
     {
-        log<level::ERR>("Unable to set minPasswordLength");
+        lg2::error("Unable to set minPasswordLength to {VALUE}", "VALUE",
+                   value);
         elog<InternalFailure>();
     }
     return AccountPolicyIface::minPasswordLength(value);
@@ -627,11 +644,11 @@ uint8_t UserMgr::rememberOldPasswordTimes(uint8_t value)
     {
         return value;
     }
-    if (setPamModuleArgValue(pamPWHistory, remOldPasswdCount,
-                             std::to_string(static_cast<int>(value))) !=
-        success)
+    if (setPamModuleConfValue(pwHistoryConfigFile, remOldPasswdCount,
+                              std::to_string(value)) != success)
     {
-        log<level::ERR>("Unable to set rememberOldPasswordTimes");
+        lg2::error("Unable to set rememberOldPasswordTimes to {VALUE}", "VALUE",
+                   value);
         elog<InternalFailure>();
     }
     return AccountPolicyIface::rememberOldPasswordTimes(value);
@@ -651,11 +668,11 @@ uint16_t UserMgr::maxLoginAttemptBeforeLockout(uint16_t value)
     {
         return value;
     }
-    if (setPamModuleArgValue(pamTally2, maxFailedAttemptsProp,
-                             std::to_string(static_cast<int>(value))) !=
-        success)
+    if (setPamModuleConfValue(faillockConfigFile, maxFailedAttempt,
+                              std::to_string(value)) != success)
     {
-        log<level::ERR>("Unable to set maxLoginAttemptBeforeLockout");
+        lg2::error("Unable to set maxLoginAttemptBeforeLockout to {VALUE}",
+                   "VALUE", value);
         elog<InternalFailure>();
     }
     return AccountPolicyIface::maxLoginAttemptBeforeLockout(value);
@@ -665,43 +682,42 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
 {
     if (value < accUnlockTimeout)
     {
-        value = accUnlockTimeout;
+        log<level::ERR>("Setting value lesser than "
+                        "ACCOUNT_UNLOCK_TIMEOUT is not allowed");
+        elog<NotAllowed>(Reason("Setting value lesser than "
+                                "ACCOUNT_UNLOCK_TIMEOUT value"
+                                "is not allowed"));
     }
     if (value == AccountPolicyIface::accountUnlockTimeout())
     {
         return value;
     }
-    std::map<std::string, int> args = {
-        {unlockTimeoutProp, static_cast<int>(value)},
-        {rootUnlockTimeoutProp, static_cast<int>(value)}};
-
-    if (setPamModuleArgValue(pamTally2, args) != success)
+    if (setPamModuleConfValue(faillockConfigFile, unlockTimeout,
+                              std::to_string(value)) != success)
     {
-        log<level::ERR>("Unable to set unlockTimeout");
+        lg2::error("Unable to set accountUnlockTimeout to {VALUE}", "VALUE",
+                   value);
         elog<InternalFailure>();
     }
-
+    if (setPamModuleConfValue(faillockConfigFile, rootUnlockTimeoutProp,
+                              std::to_string(value)) != success)
+    {
+        lg2::error("Unable to set rootUnlockTimeout to {VALUE}", "VALUE",
+                   value);
+        elog<InternalFailure>();
+    }
     return AccountPolicyIface::accountUnlockTimeout(value);
 }
 
-int UserMgr::getPamModuleArgValue(const std::string& moduleName,
-                                  const std::string& argName,
-                                  std::string& argValue)
+int UserMgr::getPamModuleConfValue(const std::string& confFile,
+                                   const std::string& argName,
+                                   std::string& argValue)
 {
-    std::string fileName;
-    if (moduleName == pamTally2)
-    {
-        fileName = pamAuthConfigFile;
-    }
-    else
-    {
-        fileName = pamPasswdConfigFile;
-    }
-    std::ifstream fileToRead(fileName, std::ios::in);
+    std::ifstream fileToRead(confFile, std::ios::in);
     if (!fileToRead.is_open())
     {
-        log<level::ERR>("Failed to open pam configuration file",
-                        entry("FILE_NAME=%s", fileName.c_str()));
+        lg2::error("Failed to open pam configuration file {FILENAME}",
+                   "FILENAME", confFile);
         return failure;
     }
     std::string line;
@@ -720,101 +736,65 @@ int UserMgr::getPamModuleArgValue(const std::string& moduleName,
             // skip comments after meaningful section and process those
             line = line.substr(0, startPos);
         }
-        if (line.find(moduleName) != std::string::npos)
+        if ((startPos = line.find(argSearch)) != std::string::npos)
         {
-            if ((startPos = line.find(argSearch)) != std::string::npos)
+            if ((endPos = line.find(' ', startPos)) == std::string::npos)
             {
-                if ((endPos = line.find(' ', startPos)) == std::string::npos)
-                {
-                    endPos = line.size();
-                }
-                startPos += argSearch.size();
-                argValue = line.substr(startPos, endPos - startPos);
-                return success;
+                endPos = line.size();
             }
+            startPos += argSearch.size();
+            argValue = line.substr(startPos, endPos - startPos);
+            return success;
         }
     }
     return failure;
 }
 
-int UserMgr::setPamModuleArgValue(const std::string& moduleName,
-                                  const std::string& argName,
-                                  const std::string& argValue)
+int UserMgr::setPamModuleConfValue(const std::string& confFile,
+                                   const std::string& argName,
+                                   const std::string& argValue)
 {
-    std::map<std::string, std::string> arg = {{argName, argValue}};
-
-    return setPamModuleArgValue(moduleName, arg);
-}
-
-/* This method is used only internally to map int to string args */
-int UserMgr::setPamModuleArgValue(const std::string& moduleName,
-                                  const std::map<std::string, int>& args)
-{
-    std::map<std::string, std::string> stringArgs;
-    for (const auto& [key, value] : args)
-    {
-        stringArgs[key] = std::to_string(value);
-    }
-
-    return setPamModuleArgValue(moduleName, stringArgs);
-}
-
-int UserMgr::setPamModuleArgValue(
-    const std::string& moduleName,
-    const std::map<std::string, std::string>& args)
-{
-    std::string fileName;
-    if (moduleName == pamTally2)
-    {
-        fileName = pamAuthConfigFile;
-    }
-    else
-    {
-        fileName = pamPasswdConfigFile;
-    }
-    std::string tmpFileName = fileName + "_tmp";
-    std::ifstream fileToRead(fileName, std::ios::in);
-    std::ofstream fileToWrite(tmpFileName, std::ios::out);
+    std::string tmpConfFile = confFile + "_tmp";
+    std::ifstream fileToRead(confFile, std::ios::in);
+    std::ofstream fileToWrite(tmpConfFile, std::ios::out);
     if (!fileToRead.is_open() || !fileToWrite.is_open())
     {
-        log<level::ERR>("Failed to open pam configuration /tmp file",
-                        entry("FILE_NAME=%s", fileName.c_str()));
+        lg2::error("Failed to open pam configuration file {FILENAME}",
+                   "FILENAME", confFile);
+        // Delete the unused tmp file
+        std::remove(tmpConfFile.c_str());
         return failure;
     }
     std::string line;
+    auto argSearch = argName + "=";
     size_t startPos = 0;
     size_t endPos = 0;
     bool found = false;
     while (getline(fileToRead, line))
     {
-        startPos = line.find('#');
-        // copy comments that take a whole line
-        if (startPos != 0)
+        // skip comments section starting with #
+        if ((startPos = line.find('#')) != std::string::npos)
         {
-            // skip end-of-line comments
-            if (startPos != std::string::npos)
+            if (startPos == 0)
             {
-                line = line.substr(0, startPos);
+                fileToWrite << line << std::endl;
+                continue;
             }
-            if (line.find(moduleName) != std::string::npos)
+            // skip comments after meaningful section and process those
+            line = line.substr(0, startPos);
+        }
+        if ((startPos = line.find(argSearch)) != std::string::npos)
+        {
+            if ((endPos = line.find(' ', startPos)) == std::string::npos)
             {
-                for (const auto& [key, value] : args)
-                {
-                    auto argSearch = key + "=";
-                    if ((startPos = line.find(argSearch)) != std::string::npos)
-                    {
-                        if ((endPos = line.find(' ', startPos)) ==
-                            std::string::npos)
-                        {
-                            endPos = line.size();
-                        }
-                        startPos += argSearch.size();
-                        line = line.substr(0, startPos) + value +
-                               line.substr(endPos, line.size() - endPos);
-                        found = true;
-                    }
-                }
+                endPos = line.size();
             }
+            startPos += argSearch.size();
+            fileToWrite << line.substr(0, startPos) << argValue
+                        << line.substr(endPos, line.size() - endPos)
+                        << std::endl;
+            found = true;
+            continue;
         }
         fileToWrite << line << std::endl;
     }
@@ -822,11 +802,13 @@ int UserMgr::setPamModuleArgValue(
     fileToRead.close();
     if (found)
     {
-        if (std::rename(tmpFileName.c_str(), fileName.c_str()) == 0)
+        if (std::rename(tmpConfFile.c_str(), confFile.c_str()) == 0)
         {
             return success;
         }
     }
+    // No changes, so delete the unused tmp file
+    std::remove(tmpConfFile.c_str());
     return failure;
 }
 
@@ -841,28 +823,86 @@ void UserMgr::userEnable(const std::string& userName, bool enabled)
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Unable to modify user enabled state");
+        lg2::error("Unable to modify user enabled state for '{USERNAME}'",
+                   "USERNAME", userName);
         elog<InternalFailure>();
     }
 
-    log<level::INFO>("User enabled/disabled state updated successfully",
-                     entry("USER_NAME=%s", userName.c_str()),
-                     entry("ENABLED=%d", enabled));
     usersList[userName]->setUserEnabled(enabled);
-    return;
+    lg2::info("User '{USERNAME}' has been {STATUS}", "USERNAME", userName,
+              "STATUS", enabled ? "Enabled" : "Disabled");
 }
 
 /**
- * pam_tally2 app will provide the user failure count and failure status
- * in second line of output with words position [0] - user name,
- * [1] - failure count, [2] - latest failure date, [3] - latest failure time
- * [4] - failure app
+ * faillock app will provide the user failed login list with when the attempt
+ * was made, the type, the source, and if it's valid.
+ *
+ * Valid in this case means that the attempt was made within the fail_interval
+ * time. So, we can check this list for the number of valid entries (lines
+ * ending with 'V') compared to the maximum allowed to determine if the user is
+ * locked out.
+ *
+ * This data is only refreshed when an attempt is made, so if the user appears
+ * to be locked out, we must also check if the most recent attempt was older
+ * than the unlock_time to know if the user has since been unlocked.
  **/
+bool UserMgr::parseFaillockForLockout(
+    const std::vector<std::string>& faillockOutput)
+{
+    uint16_t failAttempts = 0;
+    time_t lastFailedAttempt{};
+    for (const std::string& line : faillockOutput)
+    {
+        if (!line.ends_with("V"))
+        {
+            continue;
+        }
 
-static constexpr size_t t2FailCntIdx = 1;
-static constexpr size_t t2FailDateIdx = 2;
-static constexpr size_t t2FailTimeIdx = 3;
-static constexpr size_t t2OutputIndex = 1;
+        // Count this failed attempt
+        failAttempts++;
+
+        // Update the last attempt time
+        // First get the "when" which is the first two words (date and time)
+        size_t pos = line.find(" ");
+        if (pos == std::string::npos)
+        {
+            continue;
+        }
+        pos = line.find(" ", pos + 1);
+        if (pos == std::string::npos)
+        {
+            continue;
+        }
+        std::string failDateTime = line.substr(0, pos);
+
+        // NOTE: Cannot use std::get_time() here as the implementation of %y in
+        // libstdc++ does not match POSIX strptime() before gcc 12.1.0
+        // https://gcc.gnu.org/git/?p=gcc.git;a=commit;h=a8d3c98746098e2784be7144c1ccc9fcc34a0888
+        std::tm tmStruct = {};
+        if (!strptime(failDateTime.c_str(), "%F %T", &tmStruct))
+        {
+            lg2::error("Failed to parse latest failure date/time");
+            elog<InternalFailure>();
+        }
+
+        time_t failTimestamp = std::mktime(&tmStruct);
+        lastFailedAttempt = std::max(failTimestamp, lastFailedAttempt);
+    }
+
+    if (failAttempts < AccountPolicyIface::maxLoginAttemptBeforeLockout())
+    {
+        return false;
+    }
+
+    if (lastFailedAttempt +
+            static_cast<time_t>(AccountPolicyIface::accountUnlockTimeout()) <=
+        std::time(NULL))
+    {
+        return false;
+    }
+
+    return true;
+}
 
 bool UserMgr::userLockedForFailedAttempt(const std::string& userName)
 {
@@ -880,66 +920,11 @@ bool UserMgr::userLockedForFailedAttempt(const std::string& userName)
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Unable to read login failure counter");
+        lg2::error("Unable to read login failure counter");
         elog<InternalFailure>();
     }
 
-    std::vector<std::string> splitWords;
-    boost::algorithm::split(splitWords, output[t2OutputIndex],
-                            boost::algorithm::is_any_of("\t "),
-                            boost::token_compress_on);
-    uint16_t failAttempts = 0;
-    try
-    {
-        unsigned long tmp = std::stoul(splitWords[t2FailCntIdx], nullptr);
-        if (tmp > std::numeric_limits<decltype(failAttempts)>::max())
-        {
-            throw std::out_of_range("Out of range");
-        }
-        failAttempts = static_cast<decltype(failAttempts)>(tmp);
-    }
-    catch (const std::exception& e)
-    {
-        log<level::ERR>("Exception for userLockedForFailedAttempt",
-                        entry("WHAT=%s", e.what()));
-        elog<InternalFailure>();
-    }
-
-    if (failAttempts < AccountPolicyIface::maxLoginAttemptBeforeLockout())
-    {
-        return false;
-    }
-
-    // When failedAttempts is not 0, Latest failure date/time should be
-    // available
-    if (splitWords.size() < 4)
-    {
-        log<level::ERR>("Unable to read latest failure date/time");
-        elog<InternalFailure>();
-    }
-
-    const std::string failDateTime =
-        splitWords[t2FailDateIdx] + ' ' + splitWords[t2FailTimeIdx];
-
-    // NOTE: Cannot use std::get_time() here as the implementation of %y in
-    // libstdc++ does not match POSIX strptime() before gcc 12.1.0
-    // https://gcc.gnu.org/git/?p=gcc.git;a=commit;h=a8d3c98746098e2784be7144c1ccc9fcc34a0888
-    std::tm tmStruct = {};
-    if (!strptime(failDateTime.c_str(), "%D %H:%M:%S", &tmStruct))
-    {
-        log<level::ERR>("Failed to parse latest failure date/time");
-        elog<InternalFailure>();
-    }
-
-    time_t failTimestamp = std::mktime(&tmStruct);
-    if (failTimestamp +
-            static_cast<time_t>(AccountPolicyIface::accountUnlockTimeout()) <=
-        std::time(NULL))
-    {
-        return false;
-    }
-
-    return true;
+    return parseFaillockForLockout(output);
 }
 
 bool UserMgr::userLockedForFailedAttempt(const std::string& userName,
@@ -954,11 +939,12 @@ bool UserMgr::userLockedForFailedAttempt(const std::string& userName,
 
     try
     {
-        executeCmd("/usr/sbin/pam_tally2", "-u", userName.c_str(), "-r");
+        // Clear user fail records
+        executeUserClearFailRecords(userName.c_str());
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Unable to reset login failure counter");
+        lg2::error("Unable to reset login failure counter");
         elog<InternalFailure>();
     }
 
@@ -974,14 +960,14 @@ bool UserMgr::userPasswordExpired(const std::string& userName)
     {};
     struct spwd* spwdPtr = nullptr;
     auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-    if (buflen < -1)
+    if (buflen < 0)
     {
         // Use a default size if there is no hard limit suggested by sysconf()
         buflen = 1024;
     }
     std::vector<char> buffer(buflen);
-    auto status =
-        getspnam_r(userName.c_str(), &spwd, buffer.data(), buflen, &spwdPtr);
+    auto status = getspnam_r(userName.c_str(), &spwd, buffer.data(), buflen,
+                             &spwdPtr);
     // On success, getspnam_r() returns zero, and sets *spwdPtr to spwd.
     // If no matching password record was found, these functions return 0
     // and store NULL in *spwdPtr
@@ -1023,7 +1009,7 @@ UserSSHLists UserMgr::getUserAndSshGrpList()
     phosphor::user::File passwd(passwdFileName, "r");
     if ((passwd)() == NULL)
     {
-        log<level::ERR>("Error opening the passwd file");
+        lg2::error("Error opening {FILENAME}", "FILENAME", passwdFileName);
         elog<InternalFailure>();
     }
 
@@ -1068,6 +1054,18 @@ size_t UserMgr::getIpmiUsersCount()
     return userList.size();
 }
 
+size_t UserMgr::getNonIpmiUsersCount()
+{
+    std::vector<std::string> ipmiUsers = getUsersInGroup("ipmi");
+    return usersList.size() - ipmiUsers.size();
+}
+
+size_t UserMgr::getRedfishHostInterfaceUsersCount()
+{
+    std::vector<std::string> userList = getUsersInGroup("redfish-hostiface");
+    return userList.size();
+}
+
 std::vector<std::string> UserMgr::allGroups() const
 {
     std::vector<std::string> userGroups;
@@ -1078,11 +1076,6 @@ std::vector<std::string> UserMgr::allGroups() const
      * Therefore, block the "redfish-hostiface" group from
      * "AllGroups" DBus property.
      */
-
-    /*The "service" group user can only be preconfigured, can't be added/deleted
-     * at runtime Therefore, block the "service" group from "AllGroups" DBus
-     * property.
-     */
     for (const auto& group : groupsMgr)
     {
         if (group.compare("redfish-hostiface") && group.compare("service"))
@@ -1091,11 +1084,6 @@ std::vector<std::string> UserMgr::allGroups() const
         }
     }
     return userGroups;
-}
-size_t UserMgr::getNonIpmiUsersCount()
-{
-    std::vector<std::string> ipmiUsers = getUsersInGroup("ipmi");
-    return usersList.size() - ipmiUsers.size();
 }
 
 bool UserMgr::isUserEnabled(const std::string& userName)
@@ -1138,8 +1126,7 @@ std::vector<std::string> UserMgr::getUsersInGroup(const std::string& groupName)
     }
     else
     {
-        log<level::ERR>("Group not found",
-                        entry("GROUP=%s", groupName.c_str()));
+        lg2::error("Group '{GROUPNAME}' not found", "GROUPNAME", groupName);
         // Don't throw error, just return empty userList - fallback
     }
     return usersInGroup;
@@ -1153,8 +1140,8 @@ DbusUserObj UserMgr::getPrivilegeMapperObject(void)
         std::string basePath = "/xyz/openbmc_project/user/ldap/openldap";
         std::string interface = "xyz.openbmc_project.User.Ldap.Config";
 
-        auto ldapMgmtService =
-            getServiceName(std::move(basePath), std::move(interface));
+        auto ldapMgmtService = getServiceName(std::move(basePath),
+                                              std::move(interface));
         auto method = bus.new_method_call(
             ldapMgmtService.c_str(), ldapMgrObjBasePath,
             "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
@@ -1164,15 +1151,13 @@ DbusUserObj UserMgr::getPrivilegeMapperObject(void)
     }
     catch (const InternalFailure& e)
     {
-        log<level::ERR>("Unable to get the User Service",
-                        entry("WHAT=%s", e.what()));
+        lg2::error("Unable to get the User Service: {ERR}", "ERR", e);
         throw;
     }
     catch (const sdbusplus::exception_t& e)
     {
-        log<level::ERR>(
-            "Failed to excute method", entry("METHOD=%s", "GetManagedObjects"),
-            entry("PATH=%s", ldapMgrObjBasePath), entry("WHAT=%s", e.what()));
+        lg2::error("Failed to excute GetManagedObjects at {PATH}: {ERR}",
+                   "PATH", ldapMgrObjBasePath, "ERR", e);
         throw;
     }
     return objects;
@@ -1190,7 +1175,7 @@ std::string UserMgr::getServiceName(std::string&& path, std::string&& intf)
 
     if (mapperResponseMsg.is_method_error())
     {
-        log<level::ERR>("Error in mapper call");
+        lg2::error("Error in mapper call");
         elog<InternalFailure>();
     }
 
@@ -1199,7 +1184,7 @@ std::string UserMgr::getServiceName(std::string&& path, std::string&& intf)
 
     if (mapperResponse.begin() == mapperResponse.end())
     {
-        log<level::ERR>("Invalid response from mapper");
+        lg2::error("Invalid response from mapper");
         elog<InternalFailure>();
     }
 
@@ -1229,8 +1214,7 @@ gid_t UserMgr::getPrimaryGroup(const std::string& userName) const
         return pwd.pw_gid;
     }
 
-    log<level::ERR>("User noes not exist",
-                    entry("USER_NAME=%s", userName.c_str()));
+    lg2::error("User {USERNAME} does not exist", "USERNAME", userName);
     elog<UserNameDoesNotExist>();
 }
 
@@ -1260,8 +1244,8 @@ bool UserMgr::isGroupMember(const std::string& userName, gid_t primaryGid,
         buflen *= 2;
         buffer.resize(buflen);
 
-        log<level::DEBUG>("Increase buffer for getgrnam_r()",
-                          entry("BUFFER_LENGTH=%zu", buflen));
+        lg2::debug("Increase buffer for getgrnam_r() to {SIZE}", "SIZE",
+                   buflen);
 
         status = getgrnam_r(groupName.c_str(), &grp, buffer.data(),
                             buffer.size(), &grpPtr);
@@ -1287,13 +1271,12 @@ bool UserMgr::isGroupMember(const std::string& userName, gid_t primaryGid,
     }
     else if (status == ERANGE)
     {
-        log<level::ERR>("Group info requires too much memory",
-                        entry("GROUP_NAME=%s", groupName.c_str()));
+        lg2::error("Group info of {GROUP} requires too much memory", "GROUP",
+                   groupName);
     }
     else
     {
-        log<level::ERR>("Group does not exist",
-                        entry("GROUP_NAME=%s", groupName.c_str()));
+        lg2::error("Group {GROUP} does not exist", "GROUP", groupName);
     }
 
     return false;
@@ -1401,21 +1384,128 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
             }
             else
             {
-                log<level::WARNING>("LDAP group privilege mapping does not "
-                                    "exist, default \"priv-user\" is used");
+                lg2::warning("LDAP group privilege mapping does not exist, "
+                             "default \"priv-user\" is used");
                 userInfo.emplace("UserPrivilege", "priv-user");
             }
         }
         catch (const std::bad_variant_access& e)
         {
-            log<level::ERR>("Error while accessing variant",
-                            entry("WHAT=%s", e.what()));
+            lg2::error("Error while accessing variant: {ERR}", "ERR", e);
             elog<InternalFailure>();
         }
         userInfo.emplace("RemoteUser", true);
     }
 
     return userInfo;
+}
+
+void UserMgr::initializeAccountPolicy()
+{
+    std::string valueStr;
+    auto value = minPasswdLength;
+    unsigned long tmp = 0;
+    if (getPamModuleConfValue(pwQualityConfigFile, minPasswdLenProp,
+                              valueStr) != success)
+    {
+        AccountPolicyIface::minPasswordLength(minPasswdLength);
+    }
+    else
+    {
+        try
+        {
+            tmp = std::stoul(valueStr, nullptr);
+            if (tmp > std::numeric_limits<decltype(value)>::max())
+            {
+                throw std::out_of_range("Out of range");
+            }
+            value = static_cast<decltype(value)>(tmp);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Exception for MinPasswordLength: {ERR}", "ERR", e);
+            throw;
+        }
+        AccountPolicyIface::minPasswordLength(value);
+    }
+    valueStr.clear();
+    if (getPamModuleConfValue(pwHistoryConfigFile, remOldPasswdCount,
+                              valueStr) != success)
+    {
+        AccountPolicyIface::rememberOldPasswordTimes(0);
+    }
+    else
+    {
+        value = 0;
+        try
+        {
+            tmp = std::stoul(valueStr, nullptr);
+            if (tmp > std::numeric_limits<decltype(value)>::max())
+            {
+                throw std::out_of_range("Out of range");
+            }
+            value = static_cast<decltype(value)>(tmp);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Exception for RememberOldPasswordTimes: {ERR}", "ERR",
+                       e);
+            throw;
+        }
+        AccountPolicyIface::rememberOldPasswordTimes(value);
+    }
+    valueStr.clear();
+    if (getPamModuleConfValue(faillockConfigFile, maxFailedAttempt, valueStr) !=
+        success)
+    {
+        AccountPolicyIface::maxLoginAttemptBeforeLockout(maxFailedAttempts);
+    }
+    else
+    {
+        uint16_t value16 = 0;
+        try
+        {
+            tmp = std::stoul(valueStr, nullptr);
+            if (tmp > std::numeric_limits<decltype(value16)>::max())
+            {
+                throw std::out_of_range("Out of range");
+            }
+            value16 = static_cast<decltype(value16)>(tmp);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Exception for MaxLoginAttemptBeforLockout: {ERR}",
+                       "ERR", e);
+            throw;
+        }
+        AccountPolicyIface::maxLoginAttemptBeforeLockout(value16);
+    }
+    valueStr.clear();
+    if (getPamModuleConfValue(faillockConfigFile, unlockTimeout, valueStr) !=
+        success)
+    {
+        AccountPolicyIface::accountUnlockTimeout(accUnlockTimeout);
+    }
+    else
+    {
+        uint32_t value32 = 0;
+        try
+        {
+            tmp = std::stoul(valueStr, nullptr);
+            if (tmp > std::numeric_limits<decltype(value32)>::max())
+            {
+                throw std::out_of_range("Out of range");
+            }
+            value32 = static_cast<decltype(value32)>(tmp);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Exception for AccountUnlockTimeout: {ERR}", "ERR", e);
+            throw;
+        }
+        AccountPolicyIface::accountUnlockTimeout(value32);
+
+    }
 }
 
 void UserMgr::initUserObjects(void)
@@ -1431,7 +1521,9 @@ void UserMgr::initUserObjects(void)
     if (!userNameList.empty())
     {
         std::map<std::string, std::vector<std::string>> groupLists;
-        for (auto& grp : groupsMgr)
+        // We only track users that are in the |predefinedGroups|
+        // The other groups don't contain real BMC users.
+        for (const char* grp : predefinedGroups)
         {
             if (grp == grpSsh)
             {
@@ -1451,7 +1543,7 @@ void UserMgr::initUserObjects(void)
 
         for (auto& user : userNameList)
         {
-            if (user == "service")
+            if(user == "service")
             {
                 continue;
             }
@@ -1479,149 +1571,24 @@ void UserMgr::initUserObjects(void)
             tempObjPath /= user;
             std::string objPath(tempObjPath);
             std::sort(userGroups.begin(), userGroups.end());
-            usersList.emplace(user,
-                              std::move(std::make_unique<phosphor::user::Users>(
-                                  bus, objPath.c_str(), userGroups, userPriv,
-                                  isUserEnabled(user), *this)));
+            usersList.emplace(user, std::make_unique<phosphor::user::Users>(
+                                        bus, objPath.c_str(), userGroups,
+                                        userPriv, isUserEnabled(user), *this));
         }
     }
 }
 
-UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
-    Ifaces(bus, path, Ifaces::action::defer_emit), bus(bus), path(path)
+UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
+    Ifaces(bus, path, Ifaces::action::defer_emit), bus(bus), path(path),
+    faillockConfigFile(defaultFaillockConfigFile),
+    pwHistoryConfigFile(defaultPWHistoryConfigFile),
+    pwQualityConfigFile(defaultPWQualityConfigFile)
 {
     UserMgrIface::allPrivileges(privMgr);
+    groupsMgr = readAllGroupsOnSystem();
     std::sort(groupsMgr.begin(), groupsMgr.end());
     UserMgrIface::allGroups(groupsMgr);
-    std::string valueStr;
-
-    std::map<std::string, int> cracklibArgs;
-    std::map<std::string, int> tallyArgs;
-
-    if (getPamModuleArgValue(pamCrackLib, minPasswdLengthProp, valueStr) !=
-        success)
-    {
-        AccountPolicyIface::minPasswordLength(minPasswdLength);
-    }
-    else
-    {
-        auto value = 0;
-        try
-        {
-            auto tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value = std::max<decltype(value)>(
-                minPasswdLength, static_cast<decltype(value)>(tmp));
-        }
-        catch (const std::exception& e)
-        {
-            log<level::ERR>("Exception for MinPasswordLength",
-                            entry("WHAT=%s", e.what()));
-            throw;
-        }
-        AccountPolicyIface::minPasswordLength(value);
-        cracklibArgs[minPasswdLengthProp] = static_cast<int>(value);
-    }
-    valueStr.clear();
-
-    if (getPamModuleArgValue(pamPWHistory, remOldPasswdCount, valueStr) !=
-        success)
-    {
-        AccountPolicyIface::rememberOldPasswordTimes(0);
-    }
-    else
-    {
-        auto value = 0;
-        try
-        {
-            auto tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value = static_cast<decltype(value)>(tmp);
-        }
-        catch (const std::exception& e)
-        {
-            log<level::ERR>("Exception for RememberOldPasswordTimes",
-                            entry("WHAT=%s", e.what()));
-            throw;
-        }
-        AccountPolicyIface::rememberOldPasswordTimes(value);
-    }
-    valueStr.clear();
-
-    if (getPamModuleArgValue(pamTally2, maxFailedAttemptsProp, valueStr) !=
-        success)
-    {
-        AccountPolicyIface::maxLoginAttemptBeforeLockout(maxFailedAttempts);
-    }
-    else
-    {
-        auto value = 0;
-        try
-        {
-            auto tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value = static_cast<decltype(value)>(tmp);
-            if (maxFailedAttempts != 0 &&
-                (value == 0 || value > maxFailedAttempts))
-            {
-                value = maxFailedAttempts;
-            }
-        }
-        catch (const std::exception& e)
-        {
-            log<level::ERR>("Exception for MaxLoginAttemptBeforLockout",
-                            entry("WHAT=%s", e.what()));
-            throw;
-        }
-        AccountPolicyIface::maxLoginAttemptBeforeLockout(value);
-        tallyArgs[maxFailedAttemptsProp] = static_cast<int>(value);
-    }
-    valueStr.clear();
-
-    if (getPamModuleArgValue(pamTally2, unlockTimeoutProp, valueStr) != success)
-    {
-        try
-        {
-            accountUnlockTimeout(accUnlockTimeout);
-        }
-        catch (const std::exception& e)
-        {
-            log<level::ERR>("Exception for AccountUnlockTimeout",
-                            entry("WHAT=%s", e.what()));
-        }
-    }
-    else
-    {
-        auto value = 0;
-        try
-        {
-            auto tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value = std::max<decltype(value)>(
-                accUnlockTimeout, static_cast<decltype(value)>(tmp));
-        }
-        catch (const std::exception& e)
-        {
-            log<level::ERR>("Exception for AccountUnlockTimeout",
-                            entry("WHAT=%s", e.what()));
-            throw;
-        }
-        AccountPolicyIface::accountUnlockTimeout(value);
-        tallyArgs[unlockTimeoutProp] = static_cast<int>(value);
-        tallyArgs[rootUnlockTimeoutProp] = static_cast<int>(value);
-    }
+    initializeAccountPolicy();
 
     if (MIN_LCASE_CHRS > std::numeric_limits<uint8_t>::max())
     {
@@ -1643,7 +1610,7 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
         log<level::ERR>("Minimum number of lowercase characters in password "
                         " value too large.");
     }
-    else if (cracklibArgs[minPasswdLengthProp] <
+    else if (minPasswdLength <
              (MIN_LCASE_CHRS + MIN_UCASE_CHRS + MIN_DIGITS + MIN_SPEC_CHRS))
     {
         log<level::ERR>("Minimum password length should be >= sum of "
@@ -1653,19 +1620,39 @@ UserMgr::UserMgr(sdbusplus::bus::bus& bus, const char* path) :
     {
         // value should be in negative to tell the minimum number of
         // characters required
-        cracklibArgs[minLcaseCharsProp] = MIN_LCASE_CHRS * (-1);
-        cracklibArgs[minUcaseCharsProp] = MIN_UCASE_CHRS * (-1);
-        cracklibArgs[minDigitProp] = MIN_DIGITS * (-1);
-        cracklibArgs[minSpecCharsProp] = MIN_SPEC_CHRS * (-1);
-    }
+        if (setPamModuleConfValue(pwQualityConfigFile, minLcaseCharsProp,
+                              std::to_string(static_cast<int>(MIN_LCASE_CHRS) * -1)) != success)
+        {
+            lg2::error("Unable to set minPasswordLength to {VALUE}", "VALUE",
+                    MIN_LCASE_CHRS);
+        }
 
-    if (setPamModuleArgValue(pamCrackLib, cracklibArgs) != success)
-    {
-        log<level::ERR>("Unable to change pam_cracklib settings");
-    }
-    if (setPamModuleArgValue(pamTally2, tallyArgs) != success)
-    {
-        log<level::ERR>("Unable to change pam_tally2 settings");
+        if (setPamModuleConfValue(pwQualityConfigFile, minUcaseCharsProp,
+                              std::to_string(static_cast<int>(MIN_UCASE_CHRS) * -1)) != success)
+        {
+            lg2::error("Unable to set miniUpperCase to {VALUE}", "VALUE",
+                    MIN_UCASE_CHRS);
+        }
+
+        if (setPamModuleConfValue(pwQualityConfigFile, minDigitProp,
+                              std::to_string(static_cast<int>(MIN_DIGITS) * -1)) != success)
+        {
+            lg2::error("Unable to set minLowerCase to {VALUE}", "VALUE",
+                    MIN_DIGITS);
+        }
+
+        if (setPamModuleConfValue(pwQualityConfigFile, minSpecCharsProp,
+                              std::to_string(static_cast<int>(MIN_SPEC_CHRS) * -1)) != success)
+        {
+            lg2::error("Unable to set minSpecialCharacter to {VALUE}", "VALUE",
+                    MIN_SPEC_CHRS);
+        }
+
+        if (setPamModuleConfValue(pwQualityConfigFile, minClassProp,
+                              std::to_string(4)) != success)
+        {
+            lg2::error("Unable to set minClass to {VALUE}", "VALUE", 4);
+        }
     }
 
     initUserObjects();
@@ -1687,6 +1674,11 @@ void UserMgr::executeUserAdd(const char* userName, const char* groups,
 void UserMgr::executeUserDelete(const char* userName)
 {
     executeCmd("/usr/sbin/userdel", userName, "-r");
+}
+
+void UserMgr::executeUserClearFailRecords(const char* userName)
+{
+    executeCmd("/usr/sbin/faillock", "--user", userName, "--reset");
 }
 
 void UserMgr::executeUserRename(const char* userName, const char* newUserName)
@@ -1714,7 +1706,7 @@ void UserMgr::executeUserModifyUserEnable(const char* userName, bool enabled)
 
 std::vector<std::string> UserMgr::getFailedAttempt(const char* userName)
 {
-    return executeCmd("/usr/sbin/pam_tally2", "-u", userName);
+    return executeCmd("/usr/sbin/faillock", "--user", userName);
 }
 
 } // namespace user

@@ -7,6 +7,9 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
+#include <phosphor-logging/elog-errors.hpp>
+#include <phosphor-logging/elog.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
@@ -29,7 +32,7 @@ constexpr auto ldapScheme = "ldap";
 constexpr auto ldapsScheme = "ldaps";
 constexpr auto certObjPath = "/xyz/openbmc_project/certs/client/ldap/1";
 constexpr auto certRootPath = "/xyz/openbmc_project/certs/client/ldap";
-constexpr auto authObjPath = "/xyz/openbmc_project/certs/authority/ldap";
+constexpr auto authObjPath = "/xyz/openbmc_project/certs/authority/truststore";
 constexpr auto certIface = "xyz.openbmc_project.Certs.Certificate";
 constexpr auto certProperty = "CertificateString";
 
@@ -38,7 +41,6 @@ using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 namespace fs = std::filesystem;
 
 using Argument = xyz::openbmc_project::Common::InvalidArgument;
-using NotAllowed = sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
 using NotAllowedArgument = xyz::openbmc_project::Common::NotAllowed;
 using PrivilegeMappingExists = sdbusplus::xyz::openbmc_project::User::Common::
     Error::PrivilegeMappingExists;
@@ -152,7 +154,7 @@ void Config::certificateInstalled(sdbusplus::message_t& /*msg*/)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
 }
@@ -170,7 +172,6 @@ void Config::certificateChanged(sdbusplus::message_t& msg)
             {
                 if (enabled())
                 {
-
                     writeConfig();
                 }
                 parent.startOrStopService(nslcdService, enabled());
@@ -181,7 +182,7 @@ void Config::certificateChanged(sdbusplus::message_t& msg)
             }
             catch (const std::exception& e)
             {
-                log<level::ERR>(e.what());
+                lg2::error("Exception: {ERR}", "ERR", e);
                 elog<InternalFailure>();
             }
         }
@@ -320,7 +321,7 @@ void Config::writeConfig()
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return;
@@ -347,7 +348,7 @@ std::string Config::ldapBindDNPassword(std::string value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return value;
@@ -372,16 +373,15 @@ std::string Config::ldapServerURI(std::string value)
         }
         else
         {
-            log<level::ERR>("bad LDAP Server URI",
-                            entry("LDAPSERVERURI=%s", value.c_str()));
+            lg2::error("Bad LDAP Server URI {URI}", "URI", value);
             elog<InvalidArgument>(Argument::ARGUMENT_NAME("ldapServerURI"),
                                   Argument::ARGUMENT_VALUE(value.c_str()));
         }
 
         if (secureLDAP && !fs::exists(tlsCacertFile.c_str()))
         {
-            log<level::ERR>("LDAP server's CA certificate not provided",
-                            entry("TLSCACERTFILE=%s", tlsCacertFile.c_str()));
+            lg2::error("LDAP server CA certificate not found at {PATH}", "PATH",
+                       tlsCacertFile);
             elog<NoCACertificate>();
         }
         val = ConfigIface::ldapServerURI(value);
@@ -407,7 +407,7 @@ std::string Config::ldapServerURI(std::string value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return val;
@@ -425,8 +425,8 @@ std::string Config::ldapBindDN(std::string value)
 
         if (value.empty())
         {
-            log<level::ERR>("Not a valid LDAP BINDDN",
-                            entry("LDAPBINDDN=%s", value.c_str()));
+            lg2::error("'{BINDDN}' is not a valid LDAP BindDN", "BINDDN",
+                       value);
             elog<InvalidArgument>(Argument::ARGUMENT_NAME("ldapBindDN"),
                                   Argument::ARGUMENT_VALUE(value.c_str()));
         }
@@ -450,7 +450,7 @@ std::string Config::ldapBindDN(std::string value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return val;
@@ -468,8 +468,8 @@ std::string Config::ldapBaseDN(std::string value)
 
         if (value.empty())
         {
-            log<level::ERR>("Not a valid LDAP BASEDN",
-                            entry("BASEDN=%s", value.c_str()));
+            lg2::error("'{BASEDN}' is not a valid LDAP BaseDN", "BASEDN",
+                       value);
             elog<InvalidArgument>(Argument::ARGUMENT_NAME("ldapBaseDN"),
                                   Argument::ARGUMENT_VALUE(value.c_str()));
         }
@@ -493,7 +493,7 @@ std::string Config::ldapBaseDN(std::string value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return val;
@@ -525,7 +525,7 @@ ConfigIface::SearchScope Config::ldapSearchScope(ConfigIface::SearchScope value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return val;
@@ -569,7 +569,7 @@ bool Config::enableService(bool value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return isEnable;
@@ -601,7 +601,7 @@ std::string Config::userNameAttribute(std::string value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return val;
@@ -633,7 +633,7 @@ std::string Config::groupNameAttribute(std::string value)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return val;
@@ -655,7 +655,7 @@ void Config::save(Archive& archive, const std::uint32_t /*version*/) const
 template <class Archive>
 void Config::load(Archive& archive, const std::uint32_t /*version*/)
 {
-    bool bVal;
+    bool bVal = false;
     archive(bVal);
     EnableIface::enabled(bVal);
 
@@ -685,7 +685,6 @@ void Config::load(Archive& archive, const std::uint32_t /*version*/)
 
 void Config::serialize()
 {
-
     if (!fs::exists(configPersistPath.c_str()))
     {
         std::ofstream os(configPersistPath.string(),
@@ -731,7 +730,7 @@ bool Config::deserialize()
     }
     catch (const cereal::Exception& e)
     {
-        log<level::ERR>(e.what());
+        lg2::error("Exception: {ERR}", "ERR", e);
         std::error_code ec;
         fs::remove(configPersistPath, ec);
         return false;
@@ -786,7 +785,7 @@ void Config::checkPrivilegeMapper(const std::string& groupName)
 {
     if (groupName.empty())
     {
-        log<level::ERR>("Group name is empty");
+        lg2::error("Group name is empty");
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group name"),
                               Argument::ARGUMENT_VALUE("Null"));
     }
@@ -795,7 +794,8 @@ void Config::checkPrivilegeMapper(const std::string& groupName)
     {
         if (val.second.get()->groupName() == groupName)
         {
-            log<level::ERR>("Group name already exists");
+            lg2::error("Group name '{GROUPNAME}' already exists", "GROUPNAME",
+                       groupName);
             elog<PrivilegeMappingExists>();
         }
     }
@@ -805,15 +805,15 @@ void Config::checkPrivilegeLevel(const std::string& privilege)
 {
     if (privilege.empty())
     {
-        log<level::ERR>("Privilege level is empty");
+        lg2::error("Privilege level is empty");
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Privilege level"),
                               Argument::ARGUMENT_VALUE("Null"));
     }
 
     if (std::find(privMgr.begin(), privMgr.end(), privilege) == privMgr.end())
     {
-        log<level::ERR>("Invalid privilege");
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Privilege level"),
+        lg2::error("Invalid privilege '{PRIVILEGE}'", "PRIVILEGE", privilege);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Privilege"),
                               Argument::ARGUMENT_VALUE(privilege.c_str()));
     }
 }

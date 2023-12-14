@@ -5,8 +5,6 @@
 
 #include <sys/types.h>
 
-#include <phosphor-logging/elog-errors.hpp>
-#include <phosphor-logging/log.hpp>
 #include <sdbusplus/bus.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
@@ -24,18 +22,15 @@ namespace ldap
 {
 namespace fs = std::filesystem;
 namespace ldap_base = sdbusplus::xyz::openbmc_project::User::Ldap::server;
-using NotAllowed = sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
-using NotAllowedArgument = xyz::openbmc_project::Common::NotAllowed;
-
-using Config = phosphor::ldap::Config;
+using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using PrivilegeMappingExists = sdbusplus::xyz::openbmc_project::User::Common::
     Error::PrivilegeMappingExists;
+using Config = phosphor::ldap::Config;
 
 class TestLDAPConfig : public testing::Test
 {
   public:
-    TestLDAPConfig() : bus(sdbusplus::bus::new_default())
-    {}
+    TestLDAPConfig() : bus(sdbusplus::bus::new_default()) {}
     void SetUp() override
     {
         using namespace phosphor::ldap;
@@ -573,8 +568,8 @@ TEST_F(TestLDAPConfig, filePermission)
 
     // Permission of the persistent file should be 640
     // Others should not be allowed to read.
-    auto permission =
-        fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read;
+    auto permission = fs::perms::owner_read | fs::perms::owner_write |
+                      fs::perms::group_read;
     auto persistFilepath = std::string(dir.c_str());
     persistFilepath += adDbusObjectPath;
     persistFilepath += "/config";

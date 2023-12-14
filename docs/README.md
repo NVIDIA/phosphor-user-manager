@@ -3,11 +3,8 @@
 ```
 To build this package, do the following steps:
 
-    1. ./bootstrap.sh
-    2. ./configure ${CONFIGURE_FLAGS}
-    3. make
-
-To clean the repository run `./bootstrap.sh clean`.
+    1. meson build
+    2. ninja -C build
 ```
 
 #### LDAP Configuration
@@ -38,7 +35,7 @@ curl -c cjar -b cjar -k -H "Content-Type: application/octet-stream"
 
 ```
 curl -c cjar -b cjar -k -H "Content-Type: application/octet-stream"
-     -X PUT -T <FILE> https://<BMC_IP>/xyz/openbmc_project/certs/authority/ldap
+     -X PUT -T <FILE> https://<BMC_IP>/xyz/openbmc_project/certs/authority/truststore
 ```
 
 #### Clear LDAP Config

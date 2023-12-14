@@ -33,10 +33,10 @@
 
 owners:
 - ratankgupta31@gmail.com
-- richard.marian.thomaiyar@linux.intel.com
 
 reviewers:
 - nanzhoumails@gmail.com
+- raviteja28031990@gmail.com
 
 matchers:
 
@@ -44,6 +44,7 @@ openbmc:
 - name: Ratan Gupta
   email: ratankgupta31@gmail.com
   discord: rgupta
-- name: Richard Thomaiyar
-  email: richard.marian.thomaiyar@linux.intel.com
-  discord: rthomaiy
+
+- name: Ravi Teja
+  email: raviteja28031990@gmail.com
+  discord: raviteja
