@@ -124,8 +124,8 @@ namespace
 {
 
 // The hardcoded groups in OpenBMC projects
-constexpr std::array<const char*, 5> predefinedGroups = {
-    "web", "redfish", "ipmi", "ssh", "hostconsole"};
+constexpr std::array<const char*, 6> predefinedGroups = {
+    "web", "redfish", "ipmi", "ssh", "hostconsole", "redfish-hostiface"};
 
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
@@ -223,7 +223,7 @@ void UserMgr::checkAndThrowForDisallowedGroupCreation(
 {
     if (groupName.size() > maxSystemGroupNameLength ||
         !std::regex_match(groupName.c_str(),
-                          std::regex("[a-zA-z_][a-zA-Z_0-9]*")))
+                          std::regex("[a-zA-z_][a-zA-Z_0-9-]*")))
     {
         lg2::error("Invalid group name '{GROUP}'", "GROUP", groupName);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
