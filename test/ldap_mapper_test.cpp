@@ -33,6 +33,20 @@ class TestSerialization : public testing::Test
         char tempDir[] = "/tmp/privmapper_test.XXXXXX";
         dir = std::filesystem::path(mkdtemp(tempDir));
     }
+    void eventLoop(uint8_t numberOfTimes)
+    {
+        if (numberOfTimes == 0 || numberOfTimes > 15)
+        {
+            return;
+        }
+
+        for (int i = 0; i < numberOfTimes; i++)
+        {
+            bus.process_discard();
+            // wait for 1 seconds
+            bus.wait(1 * 1000000);
+        }
+    }
 
     void TearDown() override
     {
@@ -139,6 +153,8 @@ TEST_F(TestSerialization, testValidPrivilege)
 
     EXPECT_NO_THROW(entry->privilege("priv-operator"));
     EXPECT_NO_THROW(entry->privilege("priv-user"));
+    // Process D-Bus calls
+    eventLoop(5);
 }
 
 TEST_F(TestSerialization, testInvalidPrivilege)
