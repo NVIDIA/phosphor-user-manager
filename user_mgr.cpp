@@ -1590,27 +1590,7 @@ UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
     UserMgrIface::allGroups(groupsMgr);
     initializeAccountPolicy();
 
-    if (MIN_LCASE_CHRS > std::numeric_limits<uint8_t>::max())
-    {
-        log<level::ERR>("Minimum number of lowercase characters in password "
-                        " value too large.");
-    }
-    else if (MIN_UCASE_CHRS > std::numeric_limits<uint8_t>::max())
-    {
-        log<level::ERR>("Minimum number of lowercase characters in password "
-                        " value too large.");
-    }
-    else if (MIN_DIGITS > std::numeric_limits<uint8_t>::max())
-    {
-        log<level::ERR>("Minimum number of lowercase characters in password "
-                        " value too large.");
-    }
-    else if (MIN_SPEC_CHRS > std::numeric_limits<uint8_t>::max())
-    {
-        log<level::ERR>("Minimum number of lowercase characters in password "
-                        " value too large.");
-    }
-    else if (minPasswdLength <
+    if (minPasswdLength <
              (MIN_LCASE_CHRS + MIN_UCASE_CHRS + MIN_DIGITS + MIN_SPEC_CHRS))
     {
         log<level::ERR>("Minimum password length should be >= sum of "
