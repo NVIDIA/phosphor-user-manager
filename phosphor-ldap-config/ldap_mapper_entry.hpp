@@ -92,6 +92,7 @@ class LDAPMapperEntry : public Interfaces
 
     /** @brief serialization directory path */
     std::string persistPath;
+    std::string dbusObjpath;
 };
 
 } // namespace ldap

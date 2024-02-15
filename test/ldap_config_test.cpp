@@ -54,6 +54,21 @@ class TestLDAPConfig : public testing::Test
         fs.close();
     }
 
+    void eventLoop(uint8_t numberOfTimes)
+    {
+        if (numberOfTimes == 0 || numberOfTimes > 15)
+        {
+            return;
+        }
+
+        for (int i = 0; i < numberOfTimes; i++)
+        {
+            bus.process_discard();
+            // wait for 1 seconds
+            bus.wait(1 * 1000000);
+        }
+    }
+
     void TearDown() override
     {
         fs::remove_all(dir);
@@ -455,7 +470,8 @@ TEST_F(TestLDAPConfig, testSearchScope)
         "MyLdap12", ldap_base::Create::SearchScope::sub,
         ldap_base::Create::Type::ActiveDirectory, "attr1", "attr2");
     managerPtr->getADConfigPtr()->enabled(true);
-
+    // Process D-Bus calls
+    eventLoop(6);
     // Change LDAP SearchScope
     managerPtr->getADConfigPtr()->ldapSearchScope(
         ldap_base::Config::SearchScope::one);
@@ -612,7 +628,8 @@ TEST_F(TestLDAPConfig, ConditionalEnableConfig)
 
     EXPECT_EQ(managerPtr->getADConfigPtr()->enabled(), true);
     EXPECT_EQ(managerPtr->getOpenLdapConfigPtr()->enabled(), false);
-
+    // Process D-Bus calls
+    eventLoop(5);
     // AS AD is already enabled so openldap can't be enabled.
     EXPECT_THROW(
         {
@@ -635,6 +652,8 @@ TEST_F(TestLDAPConfig, ConditionalEnableConfig)
     EXPECT_EQ(managerPtr->getOpenLdapConfigPtr()->enabled(), false);
     // Now enable the openldap
     managerPtr->getOpenLdapConfigPtr()->enabled(true);
+    // Process D-Bus calls
+    eventLoop(5);
     EXPECT_EQ(managerPtr->getOpenLdapConfigPtr()->enabled(), true);
     EXPECT_EQ(managerPtr->getADConfigPtr()->enabled(), false);
 
@@ -672,6 +691,8 @@ TEST_F(TestLDAPConfig, createPrivMapping)
             }
         },
         PrivilegeMappingExists);
+    // Process D-Bus calls
+    eventLoop(2);
 }
 
 TEST_F(TestLDAPConfig, deletePrivMapping)
@@ -713,6 +734,8 @@ TEST_F(TestLDAPConfig, deletePrivMapping)
     EXPECT_NO_THROW(manager.getADConfigPtr()->checkPrivilegeMapper("admin"));
     manager.getADConfigPtr()->deletePrivilegeMapper(2);
     EXPECT_NO_THROW(manager.getADConfigPtr()->checkPrivilegeMapper("user"));
+    // Process D-Bus calls
+    eventLoop(2);
 }
 
 TEST_F(TestLDAPConfig, restorePrivMapping)
@@ -792,6 +815,8 @@ TEST_F(TestLDAPConfig, testPrivileges)
 
     EXPECT_NO_THROW(entry->privilege("priv-operator"));
     EXPECT_NO_THROW(entry->privilege("priv-user"));
+    // Process D-Bus calls
+    eventLoop(5);
 }
 
 } // namespace ldap

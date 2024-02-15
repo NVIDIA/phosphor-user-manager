@@ -7,7 +7,7 @@
 
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
-#include <phosphor-logging/log.hpp>
+#include <phosphor-logging/lg2.hpp>
 
 #include <string>
 
@@ -32,13 +32,12 @@ int main(int /*argc*/, char** /*argv*/)
     }
     catch (const std::exception& e)
     {
-        log<level::ERR>("Exception occurred during User Manager initialization",
-                        entry("EXCEPTION=%s", e.what()));
+        lg2::error("Exception occurred during User Manager initialization: {ERR}", "ERR", e);
         return -1;
     }
     catch (...)
     {
-        log<level::ERR>(
+        lg2::error(
             "Exception occurred during User Manager initialization");
         return -1;
     }
