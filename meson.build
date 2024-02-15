@@ -1,10 +1,10 @@
 project('phosphor-user-manager',
         'cpp',
-        version: '0.1', meson_version: '>=0.57.0',
+        version: '0.1', meson_version: '>=1.1.1',
         default_options: [
           'warning_level=3',
           'werror=true',
-          'cpp_std=c++20',
+          'cpp_std=c++23',
           'buildtype=debugoptimized',
         ]
 )
@@ -53,7 +53,6 @@ conf_data.set_quoted('SYSTEMD_PATH', '/org/freedesktop/systemd1',
 
 conf_data.set_quoted('SYSTEMD_INTERFACE', 'org.freedesktop.systemd1.Manager',
                       description : 'systemd interface.')
-
 conf_data.set('MIN_UCASE_CHRS', get_option('MIN_UCASE_CHRS'))
 
 conf_data.set('MIN_LCASE_CHRS', get_option('MIN_LCASE_CHRS'))
@@ -126,14 +125,14 @@ executable(
     'phosphor-user-manager',
     'mainapp.cpp',
     dependencies: user_manager_dep,
-    link_args: ['-lcrypt', '-lstdc++fs'],
+    link_args: ['-lcrypt' ],
     cpp_args: ['-DBOOST_ALL_NO_LIB', '-DBOOST_SYSTEM_NO_DEPRECATED', '-DBOOST_ERROR_CODE_HEADER_ONLY'],
     install: true,
 )
 
 
 systemd_system_unit_dir = systemd_dep.get_variable(
-    pkgconfig: 'systemdsystemunitdir'
+    'systemdsystemunitdir'
 )
 
 install_data(

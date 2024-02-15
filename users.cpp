@@ -26,7 +26,7 @@
 
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
-#include <phosphor-logging/log.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
@@ -140,7 +140,7 @@ std::vector<std::string> Users::userGroups(void) const
  */
 bool Users::userEnabled(void) const
 {
-    return UsersIface::userEnabled();
+    return manager.isUserEnabled(userName);
 }
 
 void Users::setUserEnabled(bool value)

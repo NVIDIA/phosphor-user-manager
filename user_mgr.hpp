@@ -20,7 +20,7 @@
 #include <boost/process/io.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
-#include <phosphor-logging/log.hpp>
+#include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
@@ -39,7 +39,10 @@ namespace user
 {
 
 inline constexpr size_t ipmiMaxUsers = 15;
-inline constexpr size_t maxSystemUsers = 30;
+inline constexpr size_t redfishHostInterfaceUsers = 15;
+inline constexpr size_t maxSystemUsers =
+    15 + ipmiMaxUsers + redfishHostInterfaceUsers;
+extern uint8_t minPasswdLength; // MIN_PASSWORD_LENGTH;
 inline constexpr size_t maxSystemGroupNameLength = 32;
 inline constexpr size_t maxSystemGroupCount = 64;
 
@@ -96,10 +99,8 @@ std::vector<std::string> executeCmd(const char* path, ArgTypes&&... tArgs)
     int retCode = execProg.exit_code();
     if (retCode)
     {
-        phosphor::logging::log<phosphor::logging::level::ERR>(
-            "Command execution failed",
-            phosphor::logging::entry("PATH=%s", path),
-            phosphor::logging::entry("RETURN_CODE=%d", retCode));
+        lg2::error("Command {PATH} execution failed, return code {RETCODE}",
+                   "PATH", path, "RETCODE", retCode);
         phosphor::logging::elog<
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure>();
     }
@@ -172,6 +173,14 @@ class UserMgr : public Ifaces
      */
     void userEnable(const std::string& userName, bool enabled);
 
+    /** @brief get user enabled state
+     *  method to get user enabled state.
+     *
+     *  @param[in] userName - name of the user
+     *  @return - user enabled status (true/false)
+     */
+    virtual bool isUserEnabled(const std::string& userName);
+
     /** @brief update minimum password length requirement
      *
      *  @param[in] val - minimum password length
@@ -200,6 +209,14 @@ class UserMgr : public Ifaces
      *  @return - value in seconds
      */
     uint32_t accountUnlockTimeout(uint32_t val) override;
+
+    /** @brief parses the faillock output for locked user status
+     *
+     * @param[in] - output from faillock for the user
+     * @return - true / false indicating user locked / un-locked
+     **/
+    bool
+        parseFaillockForLockout(const std::vector<std::string>& faillockOutput);
 
     /** @brief lists user locked state for failed attempt
      *
@@ -234,30 +251,22 @@ class UserMgr : public Ifaces
      **/
     UserInfoMap getUserInfo(std::string userName) override;
 
-    /** @brief returns groups info
-     * Checks for the available user groups, by which new user can be created.
-     *
-     * @param[in] - none
-     * @return -  vector of strings of user groups
-     **/
-    std::vector<std::string> allGroups() const override;
-
-  private:
-    /** @brief sdbusplus handler */
-    //sdbusplus::bus::bus& bus;
-
     /** @brief get IPMI user count
      *  method to get IPMI user count
      *
      * @return - returns user count
      */
     virtual size_t getIpmiUsersCount(void);
+    
+    /** @brief get redfish-hostiface user count
+     *  method to get redfish-hostiface user count
+     *
+     * @return - returns user count
+     */
+    size_t getRedfishHostInterfaceUsersCount(void);
 
     void createGroup(std::string groupName) override;
 
-    /** @brief groups manager container */
-    std::vector<std::string> groupsMgr = {"web", "redfish", "ipmi", "ssh",
-                                          "redfish-hostiface", "service"};
     void deleteGroup(std::string groupName) override;
 
     static std::vector<std::string> readAllGroupsOnSystem();
@@ -266,28 +275,30 @@ class UserMgr : public Ifaces
     /** @brief get pam argument value
      *  method to get argument value from pam configuration
      *
-     *  @param[in] moduleName - name of the module from where arg has to be read
+     *  @param[in] confFile - path of the module config file from where arg has
+     * to be read
      *  @param[in] argName - argument name
      *  @param[out] argValue - argument value
      *
      *  @return 0 - success state of the function
      */
-    int getPamModuleArgValue(const std::string& moduleName,
-                             const std::string& argName, std::string& argValue);
+    int getPamModuleConfValue(const std::string& confFile,
+                              const std::string& argName,
+                              std::string& argValue);
 
     /** @brief set pam argument value
      *  method to set argument value in pam configuration
      *
-     *  @param[in] moduleName - name of the module in which argument value has
-     * to be set
+     *  @param[in] confFile - path of the module config file in which argument
+     * value has to be set
      *  @param[in] argName - argument name
      *  @param[out] argValue - argument value
      *
      *  @return 0 - success state of the function
      */
-    int setPamModuleArgValue(const std::string& moduleName,
-                             const std::string& argName,
-                             const std::string& argValue);
+    int setPamModuleConfValue(const std::string& confFile,
+                              const std::string& argName,
+                              const std::string& argValue);
 
     /** @brief check for user presence
      *  method to check for user existence
@@ -342,6 +353,13 @@ class UserMgr : public Ifaces
 
     virtual void executeUserDelete(const char* userName);
 
+    /** @brief clear user's failure records
+     *  method to clear user fail records and throw if failed.
+     *
+     *  @param[in] userName - name of the user
+     */
+    virtual void executeUserClearFailRecords(const char* userName);
+
     virtual void executeUserRename(const char* userName,
                                    const char* newUserName);
 
@@ -389,6 +407,14 @@ class UserMgr : public Ifaces
      */
     void checkAndThrowForDisallowedGroupCreation(const std::string& groupName);
 
+    /** @brief returns groups info
+     * Checks for the available user groups, by which new user can be created.
+     *
+     * @param[in] - none
+     * @return -  vector of strings of user groups
+     **/
+    std::vector<std::string> allGroups() const override;
+
   private:
     /** @brief sdbusplus handler */
     sdbusplus::bus_t& bus;
@@ -401,7 +427,8 @@ class UserMgr : public Ifaces
                                               "priv-user"};
 
     /** @brief groups manager container */
-    //std::vector<std::string> groupsMgr;
+    std::vector<std::string> groupsMgr = {"web", "redfish", "ipmi", "ssh",
+	"redfish-hostiface", "service"};
 
     /** @brief map container to hold users object */
     using UserName = std::string;
@@ -417,53 +444,12 @@ class UserMgr : public Ifaces
      */
     std::vector<std::string> getUsersInGroup(const std::string& groupName);
 
-    /** @brief set pam arguments values
-     *  method to set argument value in pam configuration for multiple arguments
-     *
-     *  @param[in] moduleName - name of the module in which argument value has
-     *  to be set
-     *  @param[in] args - argument name / value map, in which the argument name
-     *  is used as the key and value is a string
-     *
-     *  @return 0 - success state of the function
-     */
-    int setPamModuleArgValue(const std::string& moduleName,
-                             const std::map<std::string, std::string>& args);
-
-    /** @brief set pam arguments values
-     *  method to set argument value in pam configuration for multiple arguments
-     *
-     *  @param[in] moduleName - name of the module in which argument value has
-     *  to be set
-     *  @param[in] args - argument name / value map, in which the argument name
-     *  is used as the key and value is an integer
-     *
-     *  @return 0 - success state of the function
-     */
-    int setPamModuleArgValue(const std::string& moduleName,
-                             const std::map<std::string, int>& args);
-
-    /** @brief set pam argument value
-     *  method to set argument value in pam configuration
-     *
-     *  @param[in] moduleName - name of the module in which argument value has
-     *  to be set
-     *  @param[in] argName - argument name
-     *  @param[in] argValue - argument value with type string
-     *  @brief get user & SSH users list
+    /** @brief get user & SSH users list
      *  method to get the users and ssh users list.
      *
      *@return - vector of User & SSH user lists
      */
     UserSSHLists getUserAndSshGrpList(void);
-
-    /** @brief get user enabled state
-     *  method to get user enabled state.
-     *
-     *  @param[in] userName - name of the user
-     *  @return - user enabled status (true/false)
-     */
-    bool isUserEnabled(const std::string& userName);
 
     /** @brief initialize the user manager objects
      *  method to initialize the user manager objects accordingly
@@ -507,8 +493,9 @@ class UserMgr : public Ifaces
 
     friend class TestUserMgr;
 
-    std::string pamPasswdConfigFile;
-    std::string pamAuthConfigFile;
+    std::string faillockConfigFile;
+    std::string pwHistoryConfigFile;
+    std::string pwQualityConfigFile;
 };
 
 } // namespace user

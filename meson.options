@@ -1,3 +1,5 @@
+option('tests', type: 'feature', description: 'Build tests', value: 'enabled')
+option('root_user_mgmt', type: 'feature', description: 'Enable management of the root user', value: 'enabled')
 option('tests',
     type: 'feature',
     description: 'Build tests',
@@ -29,7 +31,7 @@ option('MIN_SPEC_CHRS',
 
 option('MIN_PASSWORD_LENGTH',
     type: 'integer',
-    value: 1,
+    value: 8,
     description: 'Min password Length',
 )
 
@@ -44,5 +46,3 @@ option('MAX_FAILED_LOGIN_ATTEMPTS',
     value: 0,
     description: 'Maximum number of failed login attempts',
 )
-option('tests', type: 'feature', description: 'Build tests', value: 'enabled')
-option('root_user_mgmt', type: 'feature', description: 'Enable management of the root user', value: 'enabled')

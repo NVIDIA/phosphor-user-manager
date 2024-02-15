@@ -44,10 +44,6 @@ Makefile.in
 
 /texinfo.tex
 
-# VisualStudioCode
-.vscode/*
-*.code-workspace
-
 # Repo specific items
 *.o
 /config.h
