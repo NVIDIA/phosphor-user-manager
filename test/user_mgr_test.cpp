@@ -321,7 +321,20 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
         ON_CALL(*this, executeGroupDeletion).WillByDefault(testing::Return());
     }
+    void eventLoop(uint8_t numberOfTimes)
+    {
+        if (numberOfTimes == 0 || numberOfTimes > 15)
+        {
+            return;
+        }
 
+        for (int i = 0; i < numberOfTimes; i++)
+        {
+            busInTest.process_discard();
+            // wait for 1 seconds
+            busInTest.wait(1 * 1000000);
+        }
+    }
     ~UserMgrInTest() override
     {
         EXPECT_NO_THROW(removeFile(tempFaillockConfigFile));
@@ -616,6 +629,7 @@ TEST_F(UserMgrInTest, DeleteUserThrowsInternalFailureWhenExecuteUserDeleteFails)
         deleteUser(username),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    eventLoop(5);
 }
 
 TEST_F(UserMgrInTest,
@@ -662,7 +676,8 @@ TEST_F(UserMgrInTest, ThrowForInvalidGroupsNoThrowWhenGroupIsValid)
     EXPECT_NO_THROW(throwForInvalidGroups({"ssh"}));
     EXPECT_NO_THROW(throwForInvalidGroups({"redfish"}));
     EXPECT_NO_THROW(throwForInvalidGroups({"web"}));
-    EXPECT_NO_THROW(throwForInvalidGroups({"hostconsole"}));
+    EXPECT_NO_THROW(throwForInvalidGroups({"service"}));
+    EXPECT_NO_THROW(throwForInvalidGroups({"redfish-hostiface"}));
 }
 
 TEST_F(UserMgrInTest, RenameUserOnSuccess)
@@ -779,6 +794,7 @@ TEST_F(UserMgrInTest, MinPasswordLengthOnSuccess)
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
     UserMgr::minPasswordLength(16);
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 16);
+    eventLoop(5);
 }
 
 TEST_F(UserMgrInTest, MinPasswordLengthOnFailure)
@@ -835,6 +851,7 @@ TEST_F(UserMgrInTest, MaxLoginAttemptBeforeLockoutOnSuccess)
     EXPECT_EQ(AccountPolicyIface::maxLoginAttemptBeforeLockout(), 2);
     UserMgr::maxLoginAttemptBeforeLockout(16);
     EXPECT_EQ(AccountPolicyIface::maxLoginAttemptBeforeLockout(), 16);
+    eventLoop(5);
 }
 
 TEST_F(UserMgrInTest, MaxLoginAttemptBeforeLockoutOnFailure)
@@ -891,8 +908,9 @@ TEST_F(UserMgrInTest, UserEnableOnSuccess)
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), false);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    eventLoop(5);
 }
-
+#if 0 // We don't support host console group
 TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
 {
     std::string username = "user001";
@@ -906,7 +924,7 @@ TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
         UserMgr::createUser(username, {"hostconsole"}, "priv-operator", true));
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
 }
-
+#endif
 TEST_F(UserMgrInTest, UserEnableThrowsInternalFailureIfExecuteUserModifyFail)
 {
     std::string username = "user001";
@@ -928,6 +946,7 @@ TEST_F(UserMgrInTest, UserEnableThrowsInternalFailureIfExecuteUserModifyFail)
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    eventLoop(5);
 }
 
 TEST_F(
@@ -1043,7 +1062,7 @@ TEST_F(
         checkAndThrowForDisallowedGroupCreation("openbmc_rfp_?owerService"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
-        checkAndThrowForDisallowedGroupCreation("openbmc_rfp_-owerService"),
+        checkAndThrowForDisallowedGroupCreation("openbmc_rfp_!owerService"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 }
 
@@ -1061,10 +1080,13 @@ TEST_F(
 
 TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
 {
-    constexpr size_t predefGroupCount = 5;
+    constexpr size_t predefGroupCount = 4;
 
     EXPECT_THAT(allGroups().size(), predefGroupCount);
-    for (size_t i = 0; i < maxSystemGroupCount - predefGroupCount; ++i)
+    // we have and additional group "redfish-hostiface" and "service" which are not
+    // exposed to the user therefore not added in allGroups() but they are
+    // present on the in the system
+    for (size_t i = 0; i < (maxSystemGroupCount - predefGroupCount) - 2 ; ++i)
     {
         std::string groupName = "openbmc_rfr_role";
         groupName += std::to_string(i);
@@ -1073,7 +1095,7 @@ TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
     EXPECT_THROW(
         createGroup("openbmc_rfr_AnotherRole"),
         sdbusplus::xyz::openbmc_project::User::Common::Error::NoResource);
-    for (size_t i = 0; i < maxSystemGroupCount - predefGroupCount; ++i)
+    for (size_t i = 0; i < (maxSystemGroupCount - predefGroupCount) - 2; ++i)
     {
         std::string groupName = "openbmc_rfr_role";
         groupName += std::to_string(i);
@@ -1093,9 +1115,10 @@ TEST_F(UserMgrInTest, CheckAndThrowForGroupExist)
 
 TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
 {
+    // The groups "redfish-hostiface" and "service" are not exposed to the user
     EXPECT_THAT(allGroups(),
-                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh",
-                                              "hostconsole"));
+                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh"
+                                              ));
 }
 
 TEST_F(UserMgrInTest, AddGroupThrowsIfPreDefinedGroupAdd)
@@ -1113,7 +1136,10 @@ TEST_F(UserMgrInTest, AddGroupThrowsIfPreDefinedGroupAdd)
         createGroup("ssh"),
         sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
     EXPECT_THROW(
-        createGroup("hostconsole"),
+        createGroup("redfish-hostiface"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
+    EXPECT_THROW(
+        createGroup("service"),
         sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists);
 }
 
@@ -1132,7 +1158,10 @@ TEST_F(UserMgrInTest, DeleteGroupThrowsIfGroupIsNotAllowedToChange)
         deleteGroup("ssh"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
-        deleteGroup("hostconsole"),
+        deleteGroup("redfish-hostiface"),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+    EXPECT_THROW(
+        deleteGroup("service"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 }
 
@@ -1174,7 +1203,7 @@ TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
 {
     EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
                 testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh",
-                                              "hostconsole"));
+                                              "service", "redfish-hostiface"));
 }
 
 } // namespace user

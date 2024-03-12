@@ -29,7 +29,6 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-
 #include <boost/algorithm/string/split.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
@@ -121,7 +120,7 @@ namespace {
 
 // The hardcoded groups in OpenBMC projects
 constexpr std::array<const char *, 6> predefinedGroups = {
-    "web", "redfish", "ipmi", "ssh", "hostconsole", "redfish-hostiface"};
+    "web", "redfish", "ipmi", "ssh", "service", "redfish-hostiface"};
 
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
@@ -202,7 +201,7 @@ void UserMgr::checkAndThrowForDisallowedGroupCreation(
     const std::string &groupName) {
   if (groupName.size() > maxSystemGroupNameLength ||
       !std::regex_match(groupName.c_str(),
-                        std::regex("[a-zA-z_][a-zA-Z_0-9-]*"))) {
+                        std::regex("[a-zA-Z_][a-zA-Z_0-9-]*"))) {
     lg2::error("Invalid group name '{GROUP}'", "GROUP", groupName);
     elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
                           Argument::ARGUMENT_VALUE(groupName.c_str()));
