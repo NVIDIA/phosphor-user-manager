@@ -198,15 +198,17 @@ void UserMgr::throwForUserDoesNotExist(const std::string &userName) {
 }
 
 void UserMgr::checkAndThrowForDisallowedGroupCreation(
-    const std::string &groupName) {
-  if (groupName.size() > maxSystemGroupNameLength ||
-      !std::regex_match(groupName.c_str(),
-                        std::regex("[a-zA-Z_][a-zA-Z_0-9-]*"))) {
-    lg2::error("Invalid group name '{GROUP}'", "GROUP", groupName);
-    elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
-                          Argument::ARGUMENT_VALUE(groupName.c_str()));
-  }
-  checkAndThrowsForGroupChangeAllowed(groupName);
+    const std::string& groupName)
+{
+    if (groupName.size() > maxSystemGroupNameLength ||
+        !std::regex_match(groupName.c_str(),
+                          std::regex("[a-zA-Z_][a-zA-Z_0-9]*")))
+    {
+        lg2::error("Invalid group name '{GROUP}'", "GROUP", groupName);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
+                              Argument::ARGUMENT_VALUE(groupName.c_str()));
+    }
+    checkAndThrowsForGroupChangeAllowed(groupName);
 }
 
 void UserMgr::throwForDeleteUserInServiceGroup(const std::string &userName) {
@@ -231,33 +233,38 @@ void UserMgr::throwForUserExists(const std::string &userName) {
 }
 
 void UserMgr::throwForUserNameConstraints(
-    const std::string &userName, const std::vector<std::string> &groupNames) {
-  if (std::find(groupNames.begin(), groupNames.end(), "ipmi") !=
-      groupNames.end()) {
-    if (userName.length() > ipmiMaxUserNameLen) {
-      lg2::error("User '{USERNAME}' exceeds IPMI username length limit "
-                 "({LENGTH} > {LIMIT})",
-                 "USERNAME", userName, "LENGTH", userName.length(), "LIMIT",
-                 ipmiMaxUserNameLen);
-      elog<UserNameGroupFail>(
-          xyz::openbmc_project::User::Common::UserNameGroupFail::REASON(
-              "IPMI length"));
+    const std::string& userName, const std::vector<std::string>& groupNames)
+{
+    if (std::find(groupNames.begin(), groupNames.end(), "ipmi") !=
+        groupNames.end())
+    {
+        if (userName.length() > ipmiMaxUserNameLen)
+        {
+            lg2::error("User '{USERNAME}' exceeds IPMI username length limit "
+                       "({LENGTH} > {LIMIT})",
+                       "USERNAME", userName, "LENGTH", userName.length(),
+                       "LIMIT", ipmiMaxUserNameLen);
+            elog<UserNameGroupFail>(
+                xyz::openbmc_project::User::Common::UserNameGroupFail::REASON(
+                    "IPMI length"));
+        }
     }
-  }
-  if (userName.length() > systemMaxUserNameLen) {
-    lg2::error("User '{USERNAME}' exceeds system username length limit "
-               "({LENGTH} > {LIMIT})",
-               "USERNAME", userName, "LENGTH", userName.length(), "LIMIT",
-               systemMaxUserNameLen);
-    elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
-                          Argument::ARGUMENT_VALUE("Invalid length"));
-  }
-  if (!std::regex_match(userName.c_str(),
-                        std::regex("[a-zA-z_][a-zA-Z_0-9]*"))) {
-    lg2::error("Invalid username '{USERNAME}'", "USERNAME", userName);
-    elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
-                          Argument::ARGUMENT_VALUE("Invalid data"));
-  }
+    if (userName.length() > systemMaxUserNameLen)
+    {
+        lg2::error("User '{USERNAME}' exceeds system username length limit "
+                   "({LENGTH} > {LIMIT})",
+                   "USERNAME", userName, "LENGTH", userName.length(), "LIMIT",
+                   systemMaxUserNameLen);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
+                              Argument::ARGUMENT_VALUE("Invalid length"));
+    }
+    if (!std::regex_match(userName.c_str(),
+                          std::regex("[a-zA-Z_][a-zA-Z_0-9]*")))
+    {
+        lg2::error("Invalid username '{USERNAME}'", "USERNAME", userName);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
+                              Argument::ARGUMENT_VALUE("Invalid data"));
+    }
 }
 
 void UserMgr::throwForMaxGrpUserCount(
