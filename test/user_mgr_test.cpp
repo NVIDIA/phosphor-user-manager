@@ -914,7 +914,7 @@ TEST_F(UserMgrInTest, UserEnableOnSuccess)
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
     eventLoop(5);
 }
-#if 0 // We don't support host console group
+
 TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
 {
     std::string username = "user001";
@@ -926,9 +926,10 @@ TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"hostconsole"}, "priv-operator", true));
+    eventLoop(6);
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
 }
-#endif
+
 TEST_F(UserMgrInTest, UserEnableThrowsInternalFailureIfExecuteUserModifyFail)
 {
     std::string username = "user001";
@@ -1084,7 +1085,7 @@ TEST_F(
 
 TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
 {
-    constexpr size_t predefGroupCount = 4;
+    constexpr size_t predefGroupCount = 5;
 
     EXPECT_THAT(allGroups().size(), predefGroupCount);
     // we have and additional group "redfish-hostiface" and "service" which are not
@@ -1121,7 +1122,7 @@ TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
 {
     // The groups "redfish-hostiface" and "service" are not exposed to the user
     EXPECT_THAT(allGroups(),
-                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh"
+                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh", "hostconsole"
                                               ));
 }
 
@@ -1207,7 +1208,7 @@ TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
 {
     EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
                 testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh",
-                                              "service", "redfish-hostiface"));
+                                              "service", "redfish-hostiface", "hostconsole"));
 }
 
 } // namespace user

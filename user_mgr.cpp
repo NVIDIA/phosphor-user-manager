@@ -119,8 +119,8 @@ using GroupNameDoesNotExists =
 namespace {
 
 // The hardcoded groups in OpenBMC projects
-constexpr std::array<const char *, 6> predefinedGroups = {
-    "web", "redfish", "ipmi", "ssh", "service", "redfish-hostiface"};
+constexpr std::array<const char *, 7> predefinedGroups = {
+    "web", "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
 
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
