@@ -45,6 +45,7 @@ conf_data.set_quoted('LDAP_CONFIG_BUSNAME', 'xyz.openbmc_project.Ldap.Config',
 conf_data.set_quoted('LDAP_CONF_PERSIST_PATH', '/var/lib/phosphor-ldap-conf',
                       description : 'path of directory having persisted LDAP configuration enabled property.')
 
+<<<<<<< HEAD
 conf_data.set_quoted('SYSTEMD_BUSNAME', 'org.freedesktop.systemd1',
                       description : 'systemd busname.')
 
@@ -67,6 +68,18 @@ conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
 
 conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'))
 
+||||||| d9adc73
+conf_data.set_quoted('SYSTEMD_BUSNAME', 'org.freedesktop.systemd1',
+                      description : 'systemd busname.')
+
+conf_data.set_quoted('SYSTEMD_PATH', '/org/freedesktop/systemd1',
+                      description :  'systemd path')
+
+conf_data.set_quoted('SYSTEMD_INTERFACE', 'org.freedesktop.systemd1.Manager',
+                      description : 'systemd interface.')
+
+=======
+>>>>>>> origin/master
 conf_header = configure_file(output: 'config.h',
     configuration: conf_data)
 
@@ -77,6 +90,8 @@ systemd_dep = dependency('systemd')
 
 cpp = meson.get_compiler('cpp')
 
+boost_dep = dependency('boost')
+
 # Get Cereal dependency.
 cereal_dep = dependency('cereal', required: false)
 has_cereal = cpp.has_header_symbol(
@@ -86,7 +101,7 @@ has_cereal = cpp.has_header_symbol(
     required: false)
 if not has_cereal
     cereal_opts = import('cmake').subproject_options()
-    cereal_opts.add_cmake_defines({'BUILD_TESTS': 'OFF'})
+    cereal_opts.add_cmake_defines({'BUILD_TESTS': 'OFF', 'SKIP_PERFORMANCE_COMPARISON': 'ON'})
     cereal_proj = import('cmake').subproject(
         'cereal',
         options: cereal_opts,
@@ -102,6 +117,7 @@ user_manager_src = [
 ]
 
 user_manager_deps = [
+     boost_dep,
      sdbusplus_dep,
      phosphor_logging_dep,
      phosphor_dbus_interfaces_dep
