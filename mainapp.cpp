@@ -2,12 +2,11 @@
 
 #include "user_mgr.hpp"
 
-#include <sdbusplus/bus.hpp>
-#include <sdbusplus/server/manager.hpp>
-
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/lg2.hpp>
+#include <sdbusplus/bus.hpp>
+#include <sdbusplus/server/manager.hpp>
 
 #include <string>
 
@@ -32,13 +31,14 @@ int main(int /*argc*/, char** /*argv*/)
     }
     catch (const std::exception& e)
     {
-        lg2::error("Exception occurred during User Manager initialization: {ERR}", "ERR", e);
+        lg2::error(
+            "Exception occurred during User Manager initialization: {ERR}",
+            "ERR", e);
         return -1;
     }
     catch (...)
     {
-        lg2::error(
-            "Exception occurred during User Manager initialization");
+        lg2::error("Exception occurred during User Manager initialization");
         return -1;
     }
     return 0;

@@ -781,14 +781,12 @@ TEST_F(UserMgrInTest, MinPasswordLengthReturnsIfValueIsTheSame)
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
 }
 
-TEST_F(UserMgrInTest,
-       MinPasswordLengthRejectsTooShortPasswordWithNotAllowed)
+TEST_F(UserMgrInTest, MinPasswordLengthRejectsTooShortPasswordWithNotAllowed)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
-    EXPECT_THROW(
-        UserMgr::minPasswordLength(minPasswdLength - 1),
-        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(UserMgr::minPasswordLength(minPasswdLength - 1),
+                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
 }
 
@@ -872,9 +870,8 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutReturnsIfValueIsTheSame)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
-    EXPECT_THROW(
-        UserMgr::accountUnlockTimeout(3),
-        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(UserMgr::accountUnlockTimeout(3),
+                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
@@ -882,9 +879,8 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutOnSuccess)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
-    EXPECT_THROW(
-        UserMgr::accountUnlockTimeout(16),
-        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(UserMgr::accountUnlockTimeout(16),
+                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
@@ -892,9 +888,8 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutOnFailure)
 {
     initializeAccountPolicy();
     EXPECT_NO_THROW(dumpStringToFile("whatever", tempFaillockConfigFile));
-    EXPECT_THROW(
-        UserMgr::accountUnlockTimeout(16),
-        sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(UserMgr::accountUnlockTimeout(16),
+                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
@@ -1088,10 +1083,10 @@ TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
     constexpr size_t predefGroupCount = 5;
 
     EXPECT_THAT(allGroups().size(), predefGroupCount);
-    // we have and additional group "redfish-hostiface" and "service" which are not
-    // exposed to the user therefore not added in allGroups() but they are
+    // we have and additional group "redfish-hostiface" and "service" which are
+    // not exposed to the user therefore not added in allGroups() but they are
     // present on the in the system
-    for (size_t i = 0; i < (maxSystemGroupCount - predefGroupCount) - 2 ; ++i)
+    for (size_t i = 0; i < (maxSystemGroupCount - predefGroupCount) - 2; ++i)
     {
         std::string groupName = "openbmc_rfr_role";
         groupName += std::to_string(i);
@@ -1122,8 +1117,8 @@ TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
 {
     // The groups "redfish-hostiface" and "service" are not exposed to the user
     EXPECT_THAT(allGroups(),
-                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh", "hostconsole"
-                                              ));
+                testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh",
+                                              "hostconsole"));
 }
 
 TEST_F(UserMgrInTest, AddGroupThrowsIfPreDefinedGroupAdd)
@@ -1208,7 +1203,8 @@ TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
 {
     EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
                 testing::UnorderedElementsAre("web", "redfish", "ipmi", "ssh",
-                                              "service", "redfish-hostiface", "hostconsole"));
+                                              "service", "redfish-hostiface",
+                                              "hostconsole"));
 }
 
 } // namespace user

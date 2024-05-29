@@ -40,8 +40,8 @@ namespace user
 
 inline constexpr size_t ipmiMaxUsers = 15;
 inline constexpr size_t redfishHostInterfaceUsers = 15;
-inline constexpr size_t maxSystemUsers =
-    15 + ipmiMaxUsers + redfishHostInterfaceUsers;
+inline constexpr size_t maxSystemUsers = 15 + ipmiMaxUsers +
+                                         redfishHostInterfaceUsers;
 extern uint8_t minPasswdLength; // MIN_PASSWORD_LENGTH;
 inline constexpr size_t maxSystemGroupNameLength = 32;
 inline constexpr size_t maxSystemGroupCount = 64;
@@ -257,7 +257,7 @@ class UserMgr : public Ifaces
      * @return - returns user count
      */
     virtual size_t getIpmiUsersCount(void);
-    
+
     /** @brief get redfish-hostiface user count
      *  method to get redfish-hostiface user count
      *
