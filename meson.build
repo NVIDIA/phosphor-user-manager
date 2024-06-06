@@ -45,15 +45,6 @@ conf_data.set_quoted('LDAP_CONFIG_BUSNAME', 'xyz.openbmc_project.Ldap.Config',
 conf_data.set_quoted('LDAP_CONF_PERSIST_PATH', '/var/lib/phosphor-ldap-conf',
                       description : 'path of directory having persisted LDAP configuration enabled property.')
 
-<<<<<<< HEAD
-conf_data.set_quoted('SYSTEMD_BUSNAME', 'org.freedesktop.systemd1',
-                      description : 'systemd busname.')
-
-conf_data.set_quoted('SYSTEMD_PATH', '/org/freedesktop/systemd1',
-                      description :  'systemd path')
-
-conf_data.set_quoted('SYSTEMD_INTERFACE', 'org.freedesktop.systemd1.Manager',
-                      description : 'systemd interface.')
 conf_data.set('MIN_UCASE_CHRS', get_option('MIN_UCASE_CHRS'))
 
 conf_data.set('MIN_LCASE_CHRS', get_option('MIN_LCASE_CHRS'))
@@ -68,18 +59,6 @@ conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
 
 conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'))
 
-||||||| d9adc73
-conf_data.set_quoted('SYSTEMD_BUSNAME', 'org.freedesktop.systemd1',
-                      description : 'systemd busname.')
-
-conf_data.set_quoted('SYSTEMD_PATH', '/org/freedesktop/systemd1',
-                      description :  'systemd path')
-
-conf_data.set_quoted('SYSTEMD_INTERFACE', 'org.freedesktop.systemd1.Manager',
-                      description : 'systemd interface.')
-
-=======
->>>>>>> origin/master
 conf_header = configure_file(output: 'config.h',
     configuration: conf_data)
 
