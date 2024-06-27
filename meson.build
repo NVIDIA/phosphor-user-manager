@@ -12,7 +12,9 @@ project('phosphor-user-manager',
 if get_option('root_user_mgmt').allowed()
     add_project_arguments('-DENABLE_ROOT_USER_MGMT', language:'cpp')
 endif
-
+if get_option('ipmi').allowed()
+    add_project_arguments('-DENABLE_IPMI', language:'cpp')
+endif
 conf_data = configuration_data()
 
 conf_data.set_quoted('USER_MANAGER_BUSNAME', 'xyz.openbmc_project.User.Manager',
