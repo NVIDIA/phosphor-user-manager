@@ -37,8 +37,11 @@ namespace phosphor
 {
 namespace user
 {
-
+#ifdef ENABLE_IPMI
 inline constexpr size_t ipmiMaxUsers = 15;
+#else
+inline constexpr size_t ipmiMaxUsers = 0;
+#endif
 inline constexpr size_t redfishHostInterfaceUsers = 15;
 inline constexpr size_t maxSystemUsers = 15 + ipmiMaxUsers +
                                          redfishHostInterfaceUsers;

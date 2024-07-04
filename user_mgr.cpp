@@ -54,7 +54,11 @@ namespace user
 {
 
 static constexpr const char* passwdFileName = "/etc/passwd";
+#ifdef ENABLE_IPMI
 static constexpr size_t ipmiMaxUserNameLen = 16;
+#else
+static constexpr size_t ipmiMaxUserNameLen = 0;
+#endif
 static constexpr size_t systemMaxUserNameLen = 30;
 static constexpr const char* grpSsh = "ssh";
 static constexpr int success = 0;
@@ -121,11 +125,17 @@ using GroupNameDoesNotExists =
 
 namespace
 {
-
+#ifdef ENABLE_IPMI
 // The hardcoded groups in OpenBMC projects
 constexpr std::array<const char*, 6> predefinedGroups = {
-    "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
-
+    "redfish",           "ipmi",       "ssh",
+    "service", "redfish-hostiface", "hostconsole"};
+#else
+// The hardcoded groups in OpenBMC projects
+constexpr std::array<const char*, 5> predefinedGroups = {
+    "redfish",           "ssh",
+    "service", "redfish-hostiface", "hostconsole"};
+#endif
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
 
@@ -1102,8 +1112,12 @@ UserSSHLists UserMgr::getUserAndSshGrpList()
 
 size_t UserMgr::getIpmiUsersCount()
 {
+#ifdef ENABLE_IPMI
     std::vector<std::string> userList = getUsersInGroup("ipmi");
     return userList.size();
+#else
+    return 0;
+#endif
 }
 
 size_t UserMgr::getNonIpmiUsersCount()
