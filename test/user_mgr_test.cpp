@@ -875,8 +875,8 @@ TEST_F(UserMgrInTest, MaxLoginAttemptBeforeLockoutReturnsIfValueIsTheSame)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::maxLoginAttemptBeforeLockout(), 2);
-    UserMgr::maxLoginAttemptBeforeLockout(2);
-    EXPECT_EQ(AccountPolicyIface::maxLoginAttemptBeforeLockout(), 2);
+    UserMgr::maxLoginAttemptBeforeLockout(3);
+    EXPECT_EQ(AccountPolicyIface::maxLoginAttemptBeforeLockout(), 3);
 }
 
 TEST_F(UserMgrInTest, MaxLoginAttemptBeforeLockoutOnSuccess)

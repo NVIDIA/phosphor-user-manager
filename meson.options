@@ -39,7 +39,7 @@ option('ACCOUNT_UNLOCK_TIMEOUT',
 
 option('MAX_FAILED_LOGIN_ATTEMPTS',
     type: 'integer',
-    value: 0,
+    value: 3,
     description: 'Maximum number of failed login attempts',
 )
 

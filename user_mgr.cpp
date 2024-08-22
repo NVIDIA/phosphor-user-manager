@@ -128,13 +128,11 @@ namespace
 #ifdef ENABLE_IPMI
 // The hardcoded groups in OpenBMC projects
 constexpr std::array<const char*, 6> predefinedGroups = {
-    "redfish",           "ipmi",       "ssh",
-    "service", "redfish-hostiface", "hostconsole"};
+    "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
 #else
 // The hardcoded groups in OpenBMC projects
 constexpr std::array<const char*, 5> predefinedGroups = {
-    "redfish",           "ssh",
-    "service", "redfish-hostiface", "hostconsole"};
+    "redfish", "ssh", "service", "redfish-hostiface", "hostconsole"};
 #endif
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
@@ -824,7 +822,11 @@ int UserMgr::setPamModuleConfValue(const std::string& confFile,
         lg2::error("Failed to open pam configuration file {FILENAME}",
                    "FILENAME", confFile);
         // Delete the unused tmp file
-        std::remove(tmpConfFile.c_str());
+        if (std::remove(tmpConfFile.c_str()) != 0)
+        {
+            lg2::error("Failed to remove temporary file {FILENAME}", "FILENAME",
+                       tmpConfFile);
+        }
         return failure;
     }
     std::string line;
@@ -870,7 +872,11 @@ int UserMgr::setPamModuleConfValue(const std::string& confFile,
         }
     }
     // No changes, so delete the unused tmp file
-    std::remove(tmpConfFile.c_str());
+    if (std::remove(tmpConfFile.c_str()) != 0)
+    {
+        lg2::error("Failed to remove temporary file {FILENAME}", "FILENAME",
+                    tmpConfFile);
+    }
     return failure;
 }
 
@@ -1590,7 +1596,7 @@ void UserMgr::initUserObjects(void)
         // The other groups don't contain real BMC users.
         for (const char* grp : predefinedGroups)
         {
-            if (grp == grpSsh)
+            if (strcmp(grp, grpSsh) == 0)
             {
                 groupLists.emplace(grp, sshGrpUsersList);
             }
