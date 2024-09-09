@@ -1149,14 +1149,12 @@ TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
 {
 #ifdef ENABLE_IPMI
     // The groups "redfish-hostiface" and "service" are not exposed to the user
-    EXPECT_THAT(allGroups(),
-                testing::UnorderedElementsAre("redfish", "ipmi", "ssh",
-                                              "hostconsole"));
+    EXPECT_THAT(allGroups(), testing::UnorderedElementsAre(
+                                 "redfish", "ipmi", "ssh", "hostconsole"));
 #else
     // The groups "redfish-hostiface" and "service" are not exposed to the user
     EXPECT_THAT(allGroups(),
-                testing::UnorderedElementsAre("redfish", "ssh",
-                                              "hostconsole"));
+                testing::UnorderedElementsAre("redfish", "ssh", "hostconsole"));
 #endif
 }
 
@@ -1245,8 +1243,8 @@ TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
                                               "hostconsole"));
 #else
     EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
-                testing::UnorderedElementsAre("redfish", "ssh",
-                                              "service", "redfish-hostiface",
+                testing::UnorderedElementsAre("redfish", "ssh", "service",
+                                              "redfish-hostiface",
                                               "hostconsole"));
 #endif
 }

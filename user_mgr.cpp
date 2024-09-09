@@ -875,7 +875,7 @@ int UserMgr::setPamModuleConfValue(const std::string& confFile,
     if (std::remove(tmpConfFile.c_str()) != 0)
     {
         lg2::error("Failed to remove temporary file {FILENAME}", "FILENAME",
-                    tmpConfFile);
+                   tmpConfFile);
     }
     return failure;
 }
