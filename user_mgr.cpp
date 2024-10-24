@@ -127,6 +127,7 @@ namespace
 {
 #ifdef ENABLE_IPMI
 // The hardcoded groups in OpenBMC projects
+<<<<<<< HEAD
 constexpr std::array<const char*, 6> predefinedGroups = {
     "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
 #else
@@ -134,6 +135,15 @@ constexpr std::array<const char*, 6> predefinedGroups = {
 constexpr std::array<const char*, 5> predefinedGroups = {
     "redfish", "ssh", "service", "redfish-hostiface", "hostconsole"};
 #endif
+||||||| af1594c
+constexpr std::array<const char*, 4> predefinedGroups = {"redfish", "ipmi",
+                                                         "ssh", "hostconsole"};
+
+=======
+constexpr std::array<const char*, 4> predefinedGroups = {
+    "redfish", "ipmi", "ssh", "hostconsole"};
+
+>>>>>>> origin/master
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
 
@@ -176,10 +186,10 @@ std::string getCSVFromVector(std::span<const std::string> vec)
     }
     return std::accumulate(std::next(vec.begin()), vec.end(), vec[0],
                            [](std::string&& val, std::string_view element) {
-        val += ',';
-        val += element;
-        return val;
-    });
+                               val += ',';
+                               val += element;
+                               return val;
+                           });
 }
 
 bool removeStringFromCSV(std::string& csvStr, const std::string& delStr)
@@ -1028,14 +1038,20 @@ bool UserMgr::userPasswordExpired(const std::string& userName)
     {};
     struct spwd* spwdPtr = nullptr;
     auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+<<<<<<< HEAD
     if (buflen < 0)
+||||||| af1594c
+    if (buflen < -1)
+=======
+    if (buflen <= 0)
+>>>>>>> origin/master
     {
         // Use a default size if there is no hard limit suggested by sysconf()
         buflen = 1024;
     }
     std::vector<char> buffer(buflen);
-    auto status = getspnam_r(userName.c_str(), &spwd, buffer.data(), buflen,
-                             &spwdPtr);
+    auto status =
+        getspnam_r(userName.c_str(), &spwd, buffer.data(), buflen, &spwdPtr);
     // On success, getspnam_r() returns zero, and sets *spwdPtr to spwd.
     // If no matching password record was found, these functions return 0
     // and store NULL in *spwdPtr
@@ -1212,8 +1228,8 @@ DbusUserObj UserMgr::getPrivilegeMapperObject(void)
         std::string basePath = "/xyz/openbmc_project/user/ldap/openldap";
         std::string interface = "xyz.openbmc_project.User.Ldap.Config";
 
-        auto ldapMgmtService = getServiceName(std::move(basePath),
-                                              std::move(interface));
+        auto ldapMgmtService =
+            getServiceName(std::move(basePath), std::move(interface));
         auto method = bus.new_method_call(
             ldapMgmtService.c_str(), ldapMgrObjBasePath,
             "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
@@ -1228,7 +1244,7 @@ DbusUserObj UserMgr::getPrivilegeMapperObject(void)
     }
     catch (const sdbusplus::exception_t& e)
     {
-        lg2::error("Failed to excute GetManagedObjects at {PATH}: {ERR}",
+        lg2::error("Failed to execute GetManagedObjects at {PATH}: {ERR}",
                    "PATH", ldapMgrObjBasePath, "ERR", e);
         throw;
     }

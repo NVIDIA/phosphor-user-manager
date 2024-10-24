@@ -13,7 +13,25 @@ int main(int /*argc*/, char** /*argv*/)
 {
     using namespace phosphor::logging;
     using namespace sdbusplus::xyz::openbmc_project::Common::Error;
+<<<<<<< HEAD
     try
+||||||| af1594c
+
+    std::filesystem::path configDir =
+        std::filesystem::path(LDAP_CONFIG_FILE).parent_path();
+
+    if (!std::filesystem::exists(configDir /
+                                 phosphor::ldap::defaultNslcdFile) ||
+        !std::filesystem::exists(configDir / phosphor::ldap::nsSwitchFile))
+=======
+
+    std::filesystem::path configDir =
+        std::filesystem::path(LDAP_CONFIG_FILE).parent_path();
+
+    if (!std::filesystem::exists(
+            configDir / phosphor::ldap::defaultNslcdFile) ||
+        !std::filesystem::exists(configDir / phosphor::ldap::nsSwitchFile))
+>>>>>>> origin/master
     {
         std::filesystem::path configDir =
             std::filesystem::path(LDAP_CONFIG_FILE).parent_path();
