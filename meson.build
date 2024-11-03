@@ -61,6 +61,20 @@ conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
 
 conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'))
 
+conf_data.set('MIN_CLASS', get_option('MIN_CLASS'))
+
+conf_data.set('USER_CHECK', get_option('USER_CHECK'))
+
+conf_data.set('DICT_CHECK', get_option('DICT_CHECK'))
+
+conf_data.set('MAX_SEQUENCE', get_option('MAX_SEQUENCE'))
+
+conf_data.set('MAX_REPEAT', get_option('MAX_REPEAT'))
+
+conf_data.set('DIF_OK', get_option('DIF_OK'))
+
+conf_data.set('REMEMBER_OLD_PASSWORD', get_option('REMEMBER_OLD_PASSWORD'))
+
 conf_header = configure_file(output: 'config.h',
     configuration: conf_data)
 

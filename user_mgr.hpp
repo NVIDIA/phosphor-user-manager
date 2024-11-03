@@ -485,6 +485,13 @@ class UserMgr : public Ifaces
     virtual bool isGroupMember(const std::string& userName, gid_t primaryGid,
                                const std::string& groupName) const;
 
+    /** @brief initialize the recipe password policy
+     *
+     * @param[in] - void
+     * @return - void
+     */
+    void initNvidiaPasswordPolicy(void);
+
   protected:
     /** @brief get privilege mapper object
      *  method to get dbus privilege mapper object
