@@ -75,11 +75,7 @@ static constexpr const char* minUcaseCharsProp = "ucredit";
 static constexpr const char* minDigitProp = "dcredit";
 static constexpr const char* minSpecCharsProp = "ocredit";
 static constexpr const char* minClassProp = "minclass";
-static constexpr const char* usercheckProp = "usercheck";
-static constexpr const char* dictcheckProp = "dictcheck";
-static constexpr const char* maxsequenceProp = "maxsequence";
-static constexpr const char* maxrepeatProp = "maxrepeat";
-static constexpr const char* difokProp = "difok";
+
 static constexpr const char* remOldPasswdCount = "remember";
 static constexpr const char* maxFailedAttempt = "deny";
 static constexpr const char* unlockTimeout = "unlock_time";
@@ -1481,7 +1477,6 @@ void UserMgr::initializeAccountPolicy()
     std::string valueStr;
     auto value = minPasswdLength;
     unsigned long tmp = 0;
-
     if (getPamModuleConfValue(pwQualityConfigFile, minPasswdLenProp,
                               valueStr) != success)
     {
@@ -1664,9 +1659,60 @@ UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
     groupsMgr = readAllGroupsOnSystem();
     std::sort(groupsMgr.begin(), groupsMgr.end());
     UserMgrIface::allGroups(groupsMgr);
-    // Initialize the Nvidia password policy
-    initNvidiaPasswordPolicy();
     initializeAccountPolicy();
+
+    if (minPasswdLength <
+        (MIN_LCASE_CHRS + MIN_UCASE_CHRS + MIN_DIGITS + MIN_SPEC_CHRS))
+    {
+        lg2::error("Minimum password length should be >= sum of "
+                   "lowercase, uppercase, digits, special characters");
+    }
+    else
+    {
+        // value should be in negative to tell the minimum number of
+        // characters required
+        if (setPamModuleConfValue(
+                pwQualityConfigFile, minLcaseCharsProp,
+                std::to_string(static_cast<int>(MIN_LCASE_CHRS) * -1)) !=
+            success)
+        {
+            lg2::error("Unable to set minPasswordLength to {VALUE}", "VALUE",
+                       MIN_LCASE_CHRS);
+        }
+
+        if (setPamModuleConfValue(
+                pwQualityConfigFile, minUcaseCharsProp,
+                std::to_string(static_cast<int>(MIN_UCASE_CHRS) * -1)) !=
+            success)
+        {
+            lg2::error("Unable to set miniUpperCase to {VALUE}", "VALUE",
+                       MIN_UCASE_CHRS);
+        }
+
+        if (setPamModuleConfValue(
+                pwQualityConfigFile, minDigitProp,
+                std::to_string(static_cast<int>(MIN_DIGITS) * -1)) != success)
+        {
+            lg2::error("Unable to set minLowerCase to {VALUE}", "VALUE",
+                       MIN_DIGITS);
+        }
+
+        if (setPamModuleConfValue(
+                pwQualityConfigFile, minSpecCharsProp,
+                std::to_string(static_cast<int>(MIN_SPEC_CHRS) * -1)) !=
+            success)
+        {
+            lg2::error("Unable to set minSpecialCharacter to {VALUE}", "VALUE",
+                       MIN_SPEC_CHRS);
+        }
+
+        if (setPamModuleConfValue(pwQualityConfigFile, minClassProp,
+                                  std::to_string(4)) != success)
+        {
+            lg2::error("Unable to set minClass to {VALUE}", "VALUE", 4);
+        }
+    }
+
     initUserObjects();
 
     // emit the signal
@@ -1719,123 +1765,6 @@ void UserMgr::executeUserModifyUserEnable(const char* userName, bool enabled)
 std::vector<std::string> UserMgr::getFailedAttempt(const char* userName)
 {
     return executeCmd("/usr/sbin/faillock", "--user", userName);
-}
-
-void UserMgr::initNvidiaPasswordPolicy(void)
-{
-    if (setPamModuleConfValue(
-            pwQualityConfigFile, minPasswdLenProp,
-            std::to_string(static_cast<int>(MIN_PASSWORD_LENGTH))) != success)
-    {
-        lg2::error("Unable to set minPasswordLength to {VALUE}", "VALUE",
-                   MIN_PASSWORD_LENGTH);
-    }
-
-    if (setPamModuleConfValue(
-            pwQualityConfigFile, minLcaseCharsProp,
-            std::to_string(static_cast<int>(MIN_LCASE_CHRS) * -1)) != success)
-    {
-        lg2::error("Unable to set minLcaseChars to {VALUE}", "VALUE",
-                   MIN_LCASE_CHRS);
-    }
-
-    if (setPamModuleConfValue(
-            pwQualityConfigFile, minUcaseCharsProp,
-            std::to_string(static_cast<int>(MIN_UCASE_CHRS) * -1)) != success)
-    {
-        lg2::error("Unable to set miniUpperCase to {VALUE}", "VALUE",
-                   MIN_UCASE_CHRS);
-    }
-
-    if (setPamModuleConfValue(
-            pwQualityConfigFile, minDigitProp,
-            std::to_string(static_cast<int>(MIN_DIGITS) * -1)) != success)
-    {
-        lg2::error("Unable to set minLowerCase to {VALUE}", "VALUE",
-                   MIN_DIGITS);
-    }
-
-    if (setPamModuleConfValue(
-            pwQualityConfigFile, minSpecCharsProp,
-            std::to_string(static_cast<int>(MIN_SPEC_CHRS) * -1)) != success)
-    {
-        lg2::error("Unable to set minSpecialCharacter to {VALUE}", "VALUE",
-                   MIN_SPEC_CHRS);
-    }
-
-    if (setPamModuleConfValue(pwQualityConfigFile, minClassProp,
-                              std::to_string(static_cast<int>(MIN_CLASS))) !=
-        success)
-    {
-        lg2::error("Unable to set minClass to {VALUE}", "VALUE", MIN_CLASS);
-    }
-
-    if (setPamModuleConfValue(pwQualityConfigFile, usercheckProp,
-                              std::to_string(static_cast<int>(USER_CHECK))) !=
-        success)
-    {
-        lg2::error("Unable to set usercheck to {VALUE}", "VALUE", USER_CHECK);
-    }
-
-    if (setPamModuleConfValue(pwQualityConfigFile, dictcheckProp,
-                              std::to_string(static_cast<int>(DICT_CHECK))) !=
-        success)
-    {
-        lg2::error("Unable to set dictcheck to {VALUE}", "VALUE", DICT_CHECK);
-    }
-
-    if (setPamModuleConfValue(pwQualityConfigFile, maxsequenceProp,
-                              std::to_string(static_cast<int>(MAX_SEQUENCE))) !=
-        success)
-    {
-        lg2::error("Unable to set maxRepeat to {VALUE}", "VALUE", MAX_SEQUENCE);
-    }
-
-    if (setPamModuleConfValue(pwQualityConfigFile, maxrepeatProp,
-                              std::to_string(static_cast<int>(MAX_REPEAT))) !=
-        success)
-    {
-        lg2::error("Unable to set maxRepeat to {VALUE}", "VALUE", MAX_REPEAT);
-    }
-
-    if (setPamModuleConfValue(pwQualityConfigFile, difokProp,
-                              std::to_string(static_cast<int>(DIF_OK))) !=
-        success)
-    {
-        lg2::error("Unable to set difokProp to {VALUE}", "VALUE", DIF_OK);
-    }
-
-    if (setPamModuleConfValue(faillockConfigFile, maxFailedAttempt,
-                              std::to_string(static_cast<int>(
-                                  MAX_FAILED_LOGIN_ATTEMPTS))) != success)
-    {
-        lg2::error("Unable to set maxLoginAttemptBeforeLockout to {VALUE}",
-                   "VALUE", MAX_FAILED_LOGIN_ATTEMPTS);
-    }
-
-    if (setPamModuleConfValue(faillockConfigFile, unlockTimeout,
-                              std::to_string(static_cast<int>(
-                                  ACCOUNT_UNLOCK_TIMEOUT))) != success)
-    {
-        lg2::error("Unable to set accountUnlockTimeout to {VALUE}", "VALUE",
-                   ACCOUNT_UNLOCK_TIMEOUT);
-    }
-
-    if (setPamModuleConfValue(faillockConfigFile, rootUnlockTimeoutProp,
-                              std::to_string(static_cast<int>(
-                                  ACCOUNT_UNLOCK_TIMEOUT))) != success)
-    {
-        lg2::error("Unable to set rootUnlockTimeout to {VALUE}", "VALUE",
-                   ACCOUNT_UNLOCK_TIMEOUT);
-    }
-
-    if (setPamModuleConfValue(
-            pwHistoryConfigFile, remOldPasswdCount,
-            std::to_string(static_cast<int>(REMEMBER_OLD_PASSWORD))) != success)
-    {
-        lg2::error("Unable to set rememberOldPasswordTimes to {VALUE}", "VALUE",
-                   REMEMBER_OLD_PASSWORD);
-    }
 }
 
 } // namespace user

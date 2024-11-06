@@ -43,46 +43,4 @@ option('MAX_FAILED_LOGIN_ATTEMPTS',
     description: 'Maximum number of failed login attempts',
 )
 
-option('MIN_CLASS',
-    type: 'integer',
-    value: 4,
-    description: 'Minimum number of required classes of characters ',
-)
-
-option('USER_CHECK',
-    type: 'integer',
-    value: 1,
-    description: 'Check is username present in the password',
-)
-
-option('DICT_CHECK',
-    type: 'integer',
-    value: 1,
-    description: 'Check is the password is dictionary word',
-)
-
-option('MAX_SEQUENCE',
-    type: 'integer',
-    value: 3,
-    description: 'Maximum number of sequence allowed in password',
-)
-
-option('MAX_REPEAT',
-    type: 'integer',
-    value: 3,
-    description: 'Maximum number of allowed same consecutive characters in password',
-)
-
-option('DIF_OK',
-    type: 'integer',
-    value: 0,
-    description: 'Number of characters in a new password that must be different from the old password ',
-)
-
-option('REMEMBER_OLD_PASSWORD',
-    type: 'integer',
-    value: 0,
-    description: 'Number old password remembered',
-)
-
 option('ipmi', type : 'feature', value : 'enabled', description : 'Enable/disable ipmi feature.')
