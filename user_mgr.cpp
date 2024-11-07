@@ -70,12 +70,6 @@ uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
 
 // pam modules related
 static constexpr const char* minPasswdLenProp = "minlen";
-static constexpr const char* minLcaseCharsProp = "lcredit";
-static constexpr const char* minUcaseCharsProp = "ucredit";
-static constexpr const char* minDigitProp = "dcredit";
-static constexpr const char* minSpecCharsProp = "ocredit";
-static constexpr const char* minClassProp = "minclass";
-
 static constexpr const char* remOldPasswdCount = "remember";
 static constexpr const char* maxFailedAttempt = "deny";
 static constexpr const char* unlockTimeout = "unlock_time";
@@ -1660,59 +1654,6 @@ UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
     std::sort(groupsMgr.begin(), groupsMgr.end());
     UserMgrIface::allGroups(groupsMgr);
     initializeAccountPolicy();
-
-    if (minPasswdLength <
-        (MIN_LCASE_CHRS + MIN_UCASE_CHRS + MIN_DIGITS + MIN_SPEC_CHRS))
-    {
-        lg2::error("Minimum password length should be >= sum of "
-                   "lowercase, uppercase, digits, special characters");
-    }
-    else
-    {
-        // value should be in negative to tell the minimum number of
-        // characters required
-        if (setPamModuleConfValue(
-                pwQualityConfigFile, minLcaseCharsProp,
-                std::to_string(static_cast<int>(MIN_LCASE_CHRS) * -1)) !=
-            success)
-        {
-            lg2::error("Unable to set minPasswordLength to {VALUE}", "VALUE",
-                       MIN_LCASE_CHRS);
-        }
-
-        if (setPamModuleConfValue(
-                pwQualityConfigFile, minUcaseCharsProp,
-                std::to_string(static_cast<int>(MIN_UCASE_CHRS) * -1)) !=
-            success)
-        {
-            lg2::error("Unable to set miniUpperCase to {VALUE}", "VALUE",
-                       MIN_UCASE_CHRS);
-        }
-
-        if (setPamModuleConfValue(
-                pwQualityConfigFile, minDigitProp,
-                std::to_string(static_cast<int>(MIN_DIGITS) * -1)) != success)
-        {
-            lg2::error("Unable to set minLowerCase to {VALUE}", "VALUE",
-                       MIN_DIGITS);
-        }
-
-        if (setPamModuleConfValue(
-                pwQualityConfigFile, minSpecCharsProp,
-                std::to_string(static_cast<int>(MIN_SPEC_CHRS) * -1)) !=
-            success)
-        {
-            lg2::error("Unable to set minSpecialCharacter to {VALUE}", "VALUE",
-                       MIN_SPEC_CHRS);
-        }
-
-        if (setPamModuleConfValue(pwQualityConfigFile, minClassProp,
-                                  std::to_string(4)) != success)
-        {
-            lg2::error("Unable to set minClass to {VALUE}", "VALUE", 4);
-        }
-    }
-
     initUserObjects();
 
     // emit the signal
