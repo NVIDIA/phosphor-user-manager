@@ -299,6 +299,7 @@ void UserMgr::throwForMaxGrpUserCount(
     if (std::find(groupNames.begin(), groupNames.end(), "ipmi") !=
         groupNames.end())
     {
+#ifdef ENABLE_IPMI
         if (getIpmiUsersCount() >= ipmiMaxUsers)
         {
             lg2::error("IPMI user limit reached");
@@ -306,6 +307,7 @@ void UserMgr::throwForMaxGrpUserCount(
                 xyz::openbmc_project::User::Common::NoResource::REASON(
                     "IPMI user limit reached"));
         }
+#endif
     }
     else if (std::find(groupNames.begin(), groupNames.end(),
                        "redfish-hostiface") != groupNames.end())
@@ -1039,7 +1041,7 @@ bool UserMgr::userPasswordExpired(const std::string& userName)
         //   spwd.sp_lstchg == 0 means password is expired, and
         //   spwd.sp_max == -1 means the password does not expire.
         constexpr long secondsPerDay = 60 * 60 * 24;
-        long today = static_cast<long>(time(NULL)) / secondsPerDay;
+        int64_t today = static_cast<int64_t>(time(NULL)) / secondsPerDay;
         if ((spwd.sp_lstchg == 0) ||
             ((spwd.sp_max != -1) && ((spwd.sp_max + spwd.sp_lstchg) < today)))
         {
@@ -1470,7 +1472,8 @@ void UserMgr::initializeAccountPolicy()
 {
     std::string valueStr;
     auto value = minPasswdLength;
-    unsigned long tmp = 0;
+    uint64_t tmp = 0;
+
     if (getPamModuleConfValue(pwQualityConfigFile, minPasswdLenProp,
                               valueStr) != success)
     {
