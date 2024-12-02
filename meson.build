@@ -104,6 +104,13 @@ user_manager_deps = [
      phosphor_dbus_interfaces_dep
 ]
 
+create_user_home = get_option('CREATE_USER_HOME_FOLDER')
+cpp_flags_loc = []
+
+if create_user_home
+    cpp_flags_loc += ['-DENABLE_USER_HOME_DIR_CREATE']
+endif
+
 user_manager_lib = static_library(
     'phosphor-user-manager',
     [
@@ -111,6 +118,7 @@ user_manager_lib = static_library(
         'users.cpp',
     ],
     dependencies: user_manager_deps,
+    cpp_args: cpp_flags_loc,
 )
 
 user_manager_dep = declare_dependency(
