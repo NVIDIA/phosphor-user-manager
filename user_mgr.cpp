@@ -1668,8 +1668,15 @@ void UserMgr::executeUserAdd(const char* userName, const char* groups,
 {
     // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
     // 1970-01-01, that's an implementation-defined behavior
-    executeCmd("/usr/sbin/useradd", userName, "-G", groups, "-m", "-N", "-s",
-               (sshRequested ? "/bin/sh" : "/sbin/nologin"), "-e",
+
+#ifdef ENABLE_USER_HOME_DIR_CREATE
+    const char* homeDirOption = "-m";
+#else
+    const char* homeDirOption = "-M";
+#endif
+
+    executeCmd("/usr/sbin/useradd", userName, "-G", groups, homeDirOption, "-N",
+               "-s", (sshRequested ? "/bin/sh" : "/sbin/nologin"), "-e",
                (enabled ? "" : "1970-01-01"));
 }
 

@@ -43,4 +43,10 @@ option('MAX_FAILED_LOGIN_ATTEMPTS',
     description: 'Maximum number of failed login attempts',
 )
 
+option('CREATE_USER_HOME_FOLDER',
+    type: 'boolean',
+    value: true,
+    description: 'Enable creating user home directory',
+)
+
 option('ipmi', type : 'feature', value : 'enabled', description : 'Enable/disable ipmi feature.')
