@@ -1,33 +1,9 @@
 option('tests', type: 'feature', description: 'Build tests', value: 'enabled')
 option('root_user_mgmt', type: 'feature', description: 'Enable management of the root user', value: 'enabled')
 
-option('MIN_UCASE_CHRS',
-    type: 'integer',
-    value: 0,
-    description: 'Minimum number of upper case characters in the password',
-)
-
-option('MIN_LCASE_CHRS',
-    type: 'integer',
-    value: 0,
-    description: 'Minimum number of lower case characters in the password',
-)
-
-option('MIN_DIGITS',
-    type: 'integer',
-    value: 0,
-    description: 'Minimum number of digits in the password',
-)
-
-option('MIN_SPEC_CHRS',
-    type: 'integer',
-    value: 0,
-    description: 'Minimum number of special characters in the password',
-)
-
 option('MIN_PASSWORD_LENGTH',
     type: 'integer',
-    value: 0,
+    value: 8,
     description: 'Min password Length',
 )
 
@@ -39,7 +15,7 @@ option('ACCOUNT_UNLOCK_TIMEOUT',
 
 option('MAX_FAILED_LOGIN_ATTEMPTS',
     type: 'integer',
-    value: 0,
+    value: 3,
     description: 'Maximum number of failed login attempts',
 )
 
