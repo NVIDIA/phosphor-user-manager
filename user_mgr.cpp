@@ -127,7 +127,6 @@ namespace
 {
 #ifdef ENABLE_IPMI
 // The hardcoded groups in OpenBMC projects
-<<<<<<< HEAD
 constexpr std::array<const char*, 6> predefinedGroups = {
     "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
 #else
@@ -135,15 +134,6 @@ constexpr std::array<const char*, 6> predefinedGroups = {
 constexpr std::array<const char*, 5> predefinedGroups = {
     "redfish", "ssh", "service", "redfish-hostiface", "hostconsole"};
 #endif
-||||||| af1594c
-constexpr std::array<const char*, 4> predefinedGroups = {"redfish", "ipmi",
-                                                         "ssh", "hostconsole"};
-
-=======
-constexpr std::array<const char*, 4> predefinedGroups = {
-    "redfish", "ipmi", "ssh", "hostconsole"};
-
->>>>>>> origin/master
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md
 
@@ -1038,13 +1028,7 @@ bool UserMgr::userPasswordExpired(const std::string& userName)
     {};
     struct spwd* spwdPtr = nullptr;
     auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-<<<<<<< HEAD
     if (buflen < 0)
-||||||| af1594c
-    if (buflen < -1)
-=======
-    if (buflen <= 0)
->>>>>>> origin/master
     {
         // Use a default size if there is no hard limit suggested by sysconf()
         buflen = 1024;
