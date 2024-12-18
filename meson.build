@@ -47,14 +47,6 @@ conf_data.set_quoted('LDAP_CONFIG_BUSNAME', 'xyz.openbmc_project.Ldap.Config',
 conf_data.set_quoted('LDAP_CONF_PERSIST_PATH', '/var/lib/phosphor-ldap-conf',
                       description : 'path of directory having persisted LDAP configuration enabled property.')
 
-conf_data.set('MIN_UCASE_CHRS', get_option('MIN_UCASE_CHRS'))
-
-conf_data.set('MIN_LCASE_CHRS', get_option('MIN_LCASE_CHRS'))
-
-conf_data.set('MIN_DIGITS', get_option('MIN_DIGITS'))
-
-conf_data.set('MIN_SPEC_CHRS', get_option('MIN_SPEC_CHRS'))
-
 conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'))
 
 conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
