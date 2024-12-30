@@ -97,10 +97,15 @@ user_manager_deps = [
 ]
 
 create_user_home = get_option('CREATE_USER_HOME_FOLDER')
+skip_users_in_protected = get_option('SKIP_USERS_IN_PROTECTED_GROUP')
 cpp_flags_loc = []
 
 if create_user_home
     cpp_flags_loc += ['-DENABLE_USER_HOME_DIR_CREATE']
+endif
+
+if skip_users_in_protected
+  cpp_flags_loc += ['-DSKIP_USERS_IN_PROTECTED_GROUP']
 endif
 
 user_manager_lib = static_library(

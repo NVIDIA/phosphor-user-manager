@@ -25,4 +25,10 @@ option('CREATE_USER_HOME_FOLDER',
     description: 'Enable creating user home directory',
 )
 
+option('SKIP_USERS_IN_PROTECTED_GROUP',
+    type: 'boolean',
+    value: false,
+    description: 'Enable not init users in protected group',
+)
+
 option('ipmi', type : 'feature', value : 'enabled', description : 'Enable/disable ipmi feature.')
