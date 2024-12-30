@@ -1586,6 +1586,12 @@ void UserMgr::initUserObjects(void)
     userNameList = std::move(userSSHLists.first);
     sshGrpUsersList = std::move(userSSHLists.second);
 
+#ifdef SKIP_USERS_IN_PROTECTED_GROUP
+    const std::string protectedGroupName = "protected";
+    std::vector<std::string> protectedGroupUsers =
+        getUsersInGroup(protectedGroupName);
+#endif
+
     if (!userNameList.empty())
     {
         std::map<std::string, std::vector<std::string>> groupLists;
@@ -1615,6 +1621,15 @@ void UserMgr::initUserObjects(void)
             {
                 continue;
             }
+#ifdef SKIP_USERS_IN_PROTECTED_GROUP
+            if (std::find(protectedGroupUsers.begin(),
+                          protectedGroupUsers.end(),
+                          user) != protectedGroupUsers.end())
+            {
+                continue;
+            }
+#endif
+
             std::vector<std::string> userGroups;
             std::string userPriv;
             for (const auto& grp : groupLists)
