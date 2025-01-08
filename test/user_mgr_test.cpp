@@ -813,12 +813,14 @@ TEST_F(UserMgrInTest, MinPasswordLengthReturnsIfValueIsTheSame)
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
 }
 
-TEST_F(UserMgrInTest, MinPasswordLengthRejectsTooShortPasswordWithNotAllowed)
+TEST_F(UserMgrInTest,
+       MinPasswordLengthRejectsTooShortPasswordWithInvalidArgument)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
-    EXPECT_THROW(UserMgr::minPasswordLength(minPasswdLength - 1),
-                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(
+        UserMgr::minPasswordLength(minPasswdLength - 1),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_EQ(AccountPolicyIface::minPasswordLength(), 8);
 }
 
@@ -903,8 +905,9 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutReturnsIfValueIsTheSame)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
-    EXPECT_THROW(UserMgr::accountUnlockTimeout(3),
-                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(
+        UserMgr::accountUnlockTimeout(3),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
@@ -912,8 +915,9 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutOnSuccess)
 {
     initializeAccountPolicy();
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
-    EXPECT_THROW(UserMgr::accountUnlockTimeout(16),
-                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(
+        UserMgr::accountUnlockTimeout(16),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
@@ -921,8 +925,9 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutOnFailure)
 {
     initializeAccountPolicy();
     EXPECT_NO_THROW(dumpStringToFile("whatever", tempFaillockConfigFile));
-    EXPECT_THROW(UserMgr::accountUnlockTimeout(16),
-                 sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
+    EXPECT_THROW(
+        UserMgr::accountUnlockTimeout(16),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_EQ(AccountPolicyIface::accountUnlockTimeout(), 3);
 }
 
