@@ -652,11 +652,12 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
 {
     if (value < minPasswdLength)
     {
-        lg2::error("Setting value lesser than "
-                   " MIN_PASSWORD_LENGTH is not allowed");
-        elog<NotAllowed>(Reason("Setting value lesser than "
-                                "MIN_PASSWORD_LENGTH value"
-                                "is not allowed"));
+        std::string valueStr = std::to_string(value);
+        lg2::error("Attempting to set minPasswordLength to {VALUE}, less than "
+                   "{MINVALUE}",
+                   "VALUE", value, "MINVALUE", minPasswdLength);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("minPasswordLength"),
+                              Argument::ARGUMENT_VALUE(valueStr.data()));
     }
     if (value == AccountPolicyIface::minPasswordLength())
     {
@@ -700,11 +701,14 @@ uint16_t UserMgr::maxLoginAttemptBeforeLockout(uint16_t value)
 {
     if (maxFailedAttempts != 0 && (value < maxFailedAttempts))
     {
-        lg2::error("Setting value lesser than threashold "
-                   "MAX_FAILED_LOGIN_ATTEMPTS is not allowed");
-        elog<NotAllowed>(Reason("Setting value lesser than threshold "
-                                "MAX_FAILED_LOGIN_ATTEMPTS value"
-                                "is not allowed"));
+        std::string valueStr = std::to_string(value);
+        lg2::error(
+            "Attempting to set MAX_FAILED_LOGIN_ATTEMPTS to {VALUE}, less than "
+            "{MINVALUE}",
+            "VALUE", value, "MINVALUE", maxFailedAttempts);
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME("MAX_FAILED_LOGIN_ATTEMPTS"),
+            Argument::ARGUMENT_VALUE(valueStr.data()));
     }
     if (value == AccountPolicyIface::maxLoginAttemptBeforeLockout())
     {
@@ -731,11 +735,13 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
 {
     if (value < accUnlockTimeout)
     {
-        lg2::error("Setting value lesser than "
-                   "ACCOUNT_UNLOCK_TIMEOUT is not allowed");
-        elog<NotAllowed>(Reason("Setting value lesser than "
-                                "ACCOUNT_UNLOCK_TIMEOUT value"
-                                "is not allowed"));
+        std::string valueStr = std::to_string(value);
+        lg2::error(
+            "Attempting to set ACCOUNT_UNLOCK_TIMEOUT to {VALUE}, less than "
+            "{MINVALUE}",
+            "VALUE", value, "MINVALUE", accUnlockTimeout);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("ACCOUNT_UNLOCK_TIMEOUT"),
+                              Argument::ARGUMENT_VALUE(valueStr.data()));
     }
     if (value == AccountPolicyIface::accountUnlockTimeout())
     {
