@@ -16,10 +16,10 @@ int main(int /*argc*/, char** /*argv*/)
     try
     {
         std::filesystem::path configDir =
-            std::filesystem::path(LDAP_CONFIG_FILE).parent_path();
+        std::filesystem::path(LDAP_CONFIG_FILE).parent_path();
 
         if (!std::filesystem::exists(configDir /
-                                     phosphor::ldap::defaultNslcdFile) ||
+                                    phosphor::ldap::defaultNslcdFile) ||
             !std::filesystem::exists(configDir / phosphor::ldap::nsSwitchFile))
         {
             lg2::error(
@@ -33,8 +33,8 @@ int main(int /*argc*/, char** /*argv*/)
         sdbusplus::server::manager_t objManager(bus, LDAP_CONFIG_ROOT);
 
         phosphor::ldap::ConfigMgr mgr(bus, LDAP_CONFIG_ROOT, LDAP_CONFIG_FILE,
-                                      LDAP_CONF_PERSIST_PATH, TLS_CACERT_PATH,
-                                      TLS_CERT_FILE);
+                                    LDAP_CONF_PERSIST_PATH, TLS_CACERT_PATH,
+                                    TLS_CERT_FILE);
         mgr.restore();
 
         bus.request_name(LDAP_CONFIG_BUSNAME);
