@@ -1,5 +1,5 @@
 [wrap-git]
-url = https://github.com/openbmc/phosphor-dbus-interfaces.git
+url = ssh://git@gitlab-master.nvidia.com:12051/dgx/bmc/phosphor-dbus-interfaces.git
 revision = HEAD
 
 [provide]

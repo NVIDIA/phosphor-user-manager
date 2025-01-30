@@ -48,3 +48,18 @@ test(
         ],
     ),
 )
+
+# Dedicated tests for password policy adoption
+test(
+    'user_mgr_test_adoption',
+    executable(
+        'user_mgr_test_adoption',
+        'user_mgr_test_adoption.cpp',
+        include_directories: '..',
+        dependencies: [
+            gtest_dep,
+            gmock_dep,
+            user_manager_dep,
+        ],
+    ),
+)

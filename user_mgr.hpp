@@ -27,6 +27,8 @@
 #include <xyz/openbmc_project/User/AccountPolicy/server.hpp>
 #include <xyz/openbmc_project/User/Manager/server.hpp>
 
+#include <fstream>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -48,6 +50,10 @@ inline constexpr size_t maxSystemUsers = 15 + ipmiMaxUsers +
 extern uint8_t minPasswdLength; // MIN_PASSWORD_LENGTH;
 inline constexpr size_t maxSystemGroupNameLength = 32;
 inline constexpr size_t maxSystemGroupCount = 64;
+
+inline constexpr int policyAdoptionTypeDefault = 1;
+inline constexpr int policyAdoptionTypeConditional = 2;
+inline constexpr int policyAdoptionTypeUniversal = 3;
 
 using UserMgrIface = sdbusplus::xyz::openbmc_project::User::server::Manager;
 using UserSSHLists =
@@ -126,10 +132,39 @@ class UserMgr : public Ifaces
 
     /** @brief Constructs UserMgr object.
      *
-     *  @param[in] bus  - sdbusplus handler
-     *  @param[in] path - D-Bus path
+     * @param[in] bus  - Bus to attach to.
+     * @param[in] path - Path to attach to.
      */
     UserMgr(sdbusplus::bus_t& bus, const char* path);
+
+    /** @brief Sets the policy adoption type
+     *
+     * @param[in] policyType - Policy adoption type (1=default, 2=conditional,
+     * 3=universal)
+     */
+    void setPolicyAdoptionType(uint8_t policyType);
+
+    /** @brief Set password expiry policy
+     *
+     * @param[in] updatePasswordExpiry - Enable/Disable password expiry
+     * @param[in] exclusionList - Array of users to exclude from password expiry
+     * @param[in] listSize - Size of the exclusion list array
+     */
+    void setPasswordExpirePolicy(
+        bool updatePasswordExpiry,
+        const std::initializer_list<const char*>& exclusionList);
+
+    /** @brief Initializes the UserMgr object
+     *
+     * This method performs the initialization steps that were previously in the
+     * constructor:
+     * - Checks and updates password policy files
+     * - Sets up privileges and groups
+     * - Initializes account policy
+     * - Sets up user objects
+     * - Emits the object added signal
+     */
+    void initialize();
 
     /** @brief create user method.
      *  This method creates a new user as requested
@@ -351,9 +386,20 @@ class UserMgr : public Ifaces
      */
     void throwForMaxGrpUserCount(const std::vector<std::string>& groupNames);
 
+    /** @brief Executes the addition of a user
+     *
+     *  @param[in] userName - Name of the user to be added
+     *  @param[in] groups - Groups to which the user should be added
+     *  @param[in] sshRequested - Whether SSH access is requested
+     *  @param[in] enabled - Whether the user should be enabled
+     */
     virtual void executeUserAdd(const char* userName, const char* groups,
                                 bool sshRequested, bool enabled);
 
+    /** @brief Executes the deletion of a user
+     *
+     *  @param[in] userName - Name of the user to be deleted
+     */
     virtual void executeUserDelete(const char* userName);
 
     /** @brief clear user's failure records
@@ -363,19 +409,56 @@ class UserMgr : public Ifaces
      */
     virtual void executeUserClearFailRecords(const char* userName);
 
+    /** @brief Executes the renaming of a user
+     *
+     *  This method changes the username of an existing user to a new username.
+     *
+     *  @param[in] userName - Current name of the user
+     *  @param[in] newUserName - New name for the user
+     */
     virtual void executeUserRename(const char* userName,
                                    const char* newUserName);
 
+    /** @brief Modifies user groups and SSH access
+     *
+     *  @param[in] userName - Name of the user to be modified
+     *  @param[in] newGroups - New groups for the user
+     *  @param[in] sshRequested - Whether SSH access is requested
+     */
     virtual void executeUserModify(const char* userName, const char* newGroups,
                                    bool sshRequested);
 
+    /** @brief Modifies the enabled state of a user
+     *
+     *  @param[in] userName - Name of the user to be modified
+     *  @param[in] enabled - New enabled state for the user
+     */
     virtual void executeUserModifyUserEnable(const char* userName,
                                              bool enabled);
 
+    /** @brief Sets password expiry for a user
+     *
+     *  @param[in] userName - Name of the user whose password should expire
+     */
+    virtual void executeUserPasswordExpiry(const char* userName);
+
+    /** @brief Executes the creation of a group
+     *
+     *  @param[in] groupName - Name of the group to be created
+     */
     virtual void executeGroupCreation(const char* groupName);
 
+    /** @brief Executes the deletion of a group
+     *
+     *  @param[in] groupName - Name of the group to be deleted
+     */
     virtual void executeGroupDeletion(const char* groupName);
 
+    /** @brief Retrieves failed login attempts for a user
+     *
+     *  @param[in] userName - Name of the user
+     *  @return - Vector of strings representing failed attempts
+     */
     virtual std::vector<std::string> getFailedAttempt(const char* userName);
 
     /** @brief check for valid privielge
@@ -418,6 +501,121 @@ class UserMgr : public Ifaces
      **/
     std::vector<std::string> allGroups() const override;
 
+    /**
+     * @brief Check if password policy configuration file needs to be updated
+     *
+     * Determines if the password policy configuration file should be updated
+     * based on the configured POLICY_UPDATE_ADOPTION_TYPE:
+     * - POLICY_TYPE_DEFAULT: Updates only on first boot
+     * - POLICY_TYPE_UNIVERSAL: Updates if default config has newer version
+     * - POLICY_TYPE_CONDITIONAL: Updates if current config matches a previous
+     * version
+     *
+     * @param workingConfigPath Path to current working pwquality config file
+     * @param defaultConfigPath Path to default pwquality config file
+     * @param previousConfigDirPath Path to directory containing previous config
+     * files
+     * @return true if policy file should be updated, false otherwise
+     */
+    bool shouldUpdatePolicyFile(const std::string& workingConfigPath,
+                                const std::string& defaultConfigPath,
+                                const std::string& previousConfigDirPath);
+
+    /**
+     * @brief Manages password policy configuration file updates
+     *
+     * Handles the update process for password quality configuration files by:
+     * 1. Checking if an update is needed via shouldUpdatePolicyFile()
+     * 2. If update is needed, copies the default configuration
+     * 3. Updates password expiration settings if configured
+     *
+     * @param firstBootPath Path to file used to determine first boot status
+     * @param workingConfigPath Path to current working pwquality config file
+     * @param defaultConfigPath Path to default pwquality config file
+     * @param previousConfigDirPath Path to directory containing previous config
+     * files
+     */
+    void passwordPolicyFileCheck(const std::string& firstBootPath,
+                                 const std::string& workingConfigPath,
+                                 const std::string& defaultConfigPath,
+                                 const std::string& previousConfigDirPath);
+
+    /**
+     * @brief Updates password expiration settings for a specific user
+     *
+     * Applies password expiration policy settings to the specified user
+     * account. This includes:
+     * 1. Setting maximum password age
+     * 2. Setting minimum password age
+     * 3. Setting password expiration warning period
+     * 4. Enforcing password change at next login if required
+     *
+     * The method uses system commands (chage) to modify the user's
+     * password aging and expiration parameters according to the
+     * system-wide password policy settings.
+     *
+     * @param user The username for which to update password expiration settings
+     * @return bool Returns true if password was successfully expired,
+     *              false if user is in exclusion list or operation failed
+     */
+    bool passwordPolicyUpdateUserPasswordExpiration(const std::string& user);
+
+    /**
+     * @brief Compares the contents of two files byte by byte
+     *
+     * This method performs a binary comparison between two files to determine
+     * if they are identical. It is used primarily for checking if configuration
+     * files need to be updated.
+     *
+     * The comparison:
+     * - Reads both files in binary mode
+     * - Compares files byte by byte
+     * - Handles files of different sizes
+     * - Stops at the first difference found
+     *
+     * @param file1 Path to the first file to compare
+     * @param file2 Path to the second file to compare
+     * @return bool Returns true if files are identical, false if they differ
+     *              or if either file cannot be opened
+     */
+    bool compareFiles(const std::string& file1, const std::string& file2);
+
+    /**
+     * @brief Compares version numbers between two configuration files
+     *
+     * Checks if the defaults file has a higher version number than the working
+     * file. Version numbers are expected to be in the format "#version=N" where
+     * N is an integer. Whitespace between # and version= is allowed.
+     *
+     * @param defaults - Path to the defaults configuration file
+     * @param working - Path to the working configuration file
+     * @return bool - Returns:
+     *                true if:
+     *                - defaults file has no version
+     *                - working file has no version
+     *                - defaults version > working version
+     *                false if:
+     *                - files cannot be opened
+     *                - working version >= defaults version
+     */
+    bool checkVersion(const std::string& defaults, const std::string& working);
+
+    /**
+     * @brief Gets the version number from a configuration file
+     *
+     * Looks for a line starting with # and containing version=N
+     * where N is an integer. Handles various whitespace formats:
+     * #version=1
+     * # version=1
+     * #  version=1
+     * #\tversion=1
+     *
+     * @param file - Open input file stream to read from
+     * @return std::optional<int> - The version number if found and valid,
+     *                             std::nullopt otherwise
+     */
+    std::optional<int> getFileVersion(std::ifstream& file);
+
   private:
     /** @brief sdbusplus handler */
     sdbusplus::bus_t& bus;
@@ -436,6 +634,20 @@ class UserMgr : public Ifaces
     using UserName = std::string;
     std::unordered_map<UserName, std::unique_ptr<phosphor::user::Users>>
         usersList;
+
+    /** @brief Flag indicating if password expiration will be examined */
+    bool policyUpdatePasswordExpiry{false};
+
+    /** @brief List of users excluded from password expiration policy */
+    std::vector<std::string> expiryExclusionList;
+
+    /** @brief Flag indicating if password expiration is required */
+    bool needPasswordExpiry{false};
+
+    /**
+     * @brief Flag indicating type of new NIST standard policy adoption
+     */
+    uint8_t policyAdoptionType = policyAdoptionTypeDefault;
 
     /** @brief get users in group
      *  method to get group user list
@@ -485,7 +697,6 @@ class UserMgr : public Ifaces
     virtual bool isGroupMember(const std::string& userName, gid_t primaryGid,
                                const std::string& groupName) const;
 
-  protected:
     /** @brief get privilege mapper object
      *  method to get dbus privilege mapper object
      *
@@ -495,8 +706,28 @@ class UserMgr : public Ifaces
 
     friend class TestUserMgr;
 
+  protected:
+    /** @brief Path to the faillock configuration file
+     *  This file controls the account locking settings after failed login
+     * attempts. Default path is "/etc/security/faillock.conf". Used to
+     * store/retrieve settings like maximum failed login attempts and account
+     * unlock timeout.
+     */
     std::string faillockConfigFile;
+
+    /** @brief Path to the password history configuration file
+     *  This file controls how many previous passwords are remembered to prevent
+     * reuse. Default path is "/etc/security/pwhistory.conf". Used to
+     * store/retrieve the number of old passwords that should be remembered.
+     */
     std::string pwHistoryConfigFile;
+
+    /** @brief Path to the password quality configuration file
+     *  This file controls password complexity requirements and related
+     * settings. Default path is "/etc/security/pwquality.conf". Used to
+     * store/retrieve settings like minimum password length and other password
+     * quality requirements.
+     */
     std::string pwQualityConfigFile;
 };
 

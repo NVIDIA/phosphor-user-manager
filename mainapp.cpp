@@ -18,10 +18,14 @@ int main(int /*argc*/, char** /*argv*/)
 {
     auto bus = sdbusplus::bus::new_default();
     sdbusplus::server::manager_t objManager(bus, userManagerRoot);
-
     try
     {
         phosphor::user::UserMgr userMgr(bus, userManagerRoot);
+        userMgr.setPolicyAdoptionType(POLICY_UPDATE_ADOPTION_TYPE);
+        userMgr.setPasswordExpirePolicy(
+            POLICY_UPDATE_PASSWORD_EXPIRY,
+            POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST);
+        userMgr.initialize();
 
         // Claim the bus now
         bus.request_name(USER_MANAGER_BUSNAME);

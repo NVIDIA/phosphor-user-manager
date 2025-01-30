@@ -47,11 +47,41 @@ conf_data.set_quoted('LDAP_CONFIG_BUSNAME', 'xyz.openbmc_project.Ldap.Config',
 conf_data.set_quoted('LDAP_CONF_PERSIST_PATH', '/var/lib/phosphor-ldap-conf',
                       description : 'path of directory having persisted LDAP configuration enabled property.')
 
-conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'))
+conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'),
+              description: 'Minimum password length')
 
-conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
+conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'),
+              description: 'Account unlock timeout in seconds')
 
-conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'))
+conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'),
+              description: 'Maximum failed login attempts before account lockout')
+
+conf_data.set('CREATE_USER_HOME_FOLDER', get_option('CREATE_USER_HOME_FOLDER'),
+              description: 'Whether to create home folder for new users')
+
+conf_data.set('SKIP_USERS_IN_PROTECTED_GROUP', get_option('SKIP_USERS_IN_PROTECTED_GROUP'),
+              description: 'Whether to skip users in protected groups')
+
+policy_update_adoption_type_as_string = get_option('POLICY_UPDATE_ADOPTION_TYPE')
+if policy_update_adoption_type_as_string == 'default'
+    policy_update_adoption_type_as_num = '1'
+elif policy_update_adoption_type_as_string == 'conditional'
+    policy_update_adoption_type_as_num = '2'
+elif policy_update_adoption_type_as_string == 'universal'
+    policy_update_adoption_type_as_num = '3'
+else
+    error('Invalid policy update adoption type')
+endif
+conf_data.set('POLICY_UPDATE_ADOPTION_TYPE', policy_update_adoption_type_as_num,
+              description: 'Policy update adoption type')
+
+conf_data.set('POLICY_UPDATE_PASSWORD_EXPIRY',
+              get_option('POLICY_UPDATE_PASSWORD_EXPIRY').to_string(),
+              description: 'Password expiry policy update setting')
+
+conf_data.set('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
+              '{@0@}'.format(','.join(get_option('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST'))),
+              description: 'List of users excluded from password expiry policy updates')
 
 conf_header = configure_file(output: 'config.h',
     configuration: conf_data)
@@ -96,17 +126,7 @@ user_manager_deps = [
      phosphor_dbus_interfaces_dep
 ]
 
-create_user_home = get_option('CREATE_USER_HOME_FOLDER')
-skip_users_in_protected = get_option('SKIP_USERS_IN_PROTECTED_GROUP')
 cpp_flags_loc = []
-
-if create_user_home
-    cpp_flags_loc += ['-DENABLE_USER_HOME_DIR_CREATE']
-endif
-
-if skip_users_in_protected
-  cpp_flags_loc += ['-DSKIP_USERS_IN_PROTECTED_GROUP']
-endif
 
 user_manager_lib = static_library(
     'phosphor-user-manager',
@@ -169,5 +189,5 @@ meson.add_install_script(
 subdir('phosphor-ldap-config')
 
 if get_option('tests').allowed()
-  subdir('test')
+    subdir('test')
 endif
