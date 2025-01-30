@@ -31,4 +31,23 @@ option('SKIP_USERS_IN_PROTECTED_GROUP',
     description: 'Enable not init users in protected group',
 )
 
+option('POLICY_UPDATE_ADOPTION_TYPE',
+    type: 'combo',
+    choices: ['default', 'conditional', 'universal'],
+    value: 'default',
+    description: 'New password policy adoption method'
+)
+
+option('POLICY_UPDATE_PASSWORD_EXPIRY',
+    type: 'boolean',
+    value: true,
+    description: 'Expire user passwords during automatic password policy update',
+)
+
+option('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
+    type: 'array',
+    value: [],
+    description: 'Users for which automatic password expiry is disabled',
+)
+
 option('ipmi', type : 'feature', value : 'enabled', description : 'Enable/disable ipmi feature.')

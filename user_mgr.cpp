@@ -80,7 +80,13 @@ static constexpr const char* defaultFaillockConfigFile =
 static constexpr const char* defaultPWHistoryConfigFile =
     "/etc/security/pwhistory.conf";
 static constexpr const char* defaultPWQualityConfigFile =
+    "/etc/security/pwquality.conf-defaults";
+static constexpr const char* workingPWQualityConfigFile =
     "/etc/security/pwquality.conf";
+static constexpr const char* previousDefaultPWQualityConfigFilesDirectory =
+    "/etc/security/pwquality.conf.d";
+static constexpr const char* firstBootCheckPath =
+    "/etc/dropbear/dropbear_rsa_host_key";
 
 // Object Manager related
 static constexpr const char* ldapMgrObjBasePath =
@@ -1634,7 +1640,11 @@ void UserMgr::initUserObjects(void)
             {
                 continue;
             }
-#endif
+#endif // SKIP_USERS_IN_PROTECTED_GROUP
+            if (needPasswordExpiry)
+            {
+                passwordPolicyUpdateUserPasswordExpiration(user);
+            }
 
             std::vector<std::string> userGroups;
             std::string userPriv;
@@ -1665,14 +1675,37 @@ void UserMgr::initUserObjects(void)
                                         userPriv, isUserEnabled(user), *this));
         }
     }
+
+    needPasswordExpiry = false;
 }
 
 UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
     Ifaces(bus, path, Ifaces::action::defer_emit), bus(bus), path(path),
     faillockConfigFile(defaultFaillockConfigFile),
     pwHistoryConfigFile(defaultPWHistoryConfigFile),
-    pwQualityConfigFile(defaultPWQualityConfigFile)
+    pwQualityConfigFile(workingPWQualityConfigFile)
 {
+    /* Left empty intentionally */
+}
+
+void UserMgr::setPolicyAdoptionType(uint8_t policyType)
+{
+    if (policyType != policyAdoptionTypeDefault &&
+        policyType != policyAdoptionTypeConditional &&
+        policyType != policyAdoptionTypeUniversal)
+    {
+        lg2::error("Invalid policy adoption type: {TYPE}", "TYPE", policyType);
+        throw std::invalid_argument("Invalid policy adoption type");
+    }
+    policyAdoptionType = policyType;
+}
+
+void UserMgr::initialize()
+{
+    passwordPolicyFileCheck(firstBootCheckPath, workingPWQualityConfigFile,
+                            defaultPWQualityConfigFile,
+                            previousDefaultPWQualityConfigFilesDirectory);
+
     UserMgrIface::allPrivileges(privMgr);
     groupsMgr = readAllGroupsOnSystem();
     std::sort(groupsMgr.begin(), groupsMgr.end());
@@ -1690,7 +1723,7 @@ void UserMgr::executeUserAdd(const char* userName, const char* groups,
     // set EXPIRE_DATE to 0 to disable user, PAM takes 0 as expire on
     // 1970-01-01, that's an implementation-defined behavior
 
-#ifdef ENABLE_USER_HOME_DIR_CREATE
+#ifdef CREATE_USER_HOME_FOLDER
     const char* homeDirOption = "-m";
 #else
     const char* homeDirOption = "-M";
@@ -1734,9 +1767,276 @@ void UserMgr::executeUserModifyUserEnable(const char* userName, bool enabled)
                (enabled ? "" : "1970-01-01"));
 }
 
+void UserMgr::executeUserPasswordExpiry(const char* userName)
+{
+    executeCmd("/usr/bin/passwd", "-e", userName);
+}
+
 std::vector<std::string> UserMgr::getFailedAttempt(const char* userName)
 {
     return executeCmd("/usr/sbin/faillock", "--user", userName);
+}
+
+std::optional<int> UserMgr::getFileVersion(std::ifstream& file)
+{
+    static constexpr const char* versionStr = "version=";
+    std::string line;
+
+    while (std::getline(file, line))
+    {
+        auto hashPos = line.find('#');
+        if (hashPos == std::string::npos)
+        {
+            continue;
+        }
+
+        auto versionPos = line.find(versionStr, hashPos);
+        if (versionPos == std::string::npos)
+        {
+            continue;
+        }
+
+        auto betweenStr = line.substr(hashPos + 1, versionPos - (hashPos + 1));
+        if (betweenStr.find_first_not_of(" \t") != std::string::npos)
+        {
+            continue;
+        }
+
+        try
+        {
+            auto versionNumStr = line.substr(versionPos + strlen(versionStr));
+            versionNumStr.erase(0, versionNumStr.find_first_not_of(" \t"));
+            versionNumStr.erase(versionNumStr.find_last_not_of(" \t") + 1);
+            return std::stoi(versionNumStr);
+        }
+        catch (const std::exception&)
+        {
+            return std::nullopt;
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool UserMgr::checkVersion(const std::string& defaults,
+                           const std::string& working)
+{
+    std::ifstream defaultsFile(defaults);
+    std::ifstream workingFile(working);
+
+    if (!defaultsFile || !workingFile)
+    {
+        return false;
+    }
+
+    auto defaultVersion = getFileVersion(defaultsFile);
+    if (!defaultVersion)
+    {
+        return true;
+    }
+
+    auto workingVersion = getFileVersion(workingFile);
+    if (!workingVersion)
+    {
+        return true;
+    }
+
+    return *defaultVersion > *workingVersion;
+}
+
+bool UserMgr::shouldUpdatePolicyFile(const std::string& workingConfigPath,
+                                     const std::string& defaultConfigPath,
+                                     const std::string& previousConfigDirPath)
+{
+    lg2::info("Policy adoption type: {POLICY_ADOPTION_TYPE}",
+              "POLICY_ADOPTION_TYPE", policyAdoptionType);
+
+    bool confExists = std::filesystem::exists(workingConfigPath);
+
+    if (policyAdoptionType == policyAdoptionTypeDefault)
+    {
+        return false;
+    }
+    else if (policyAdoptionType == policyAdoptionTypeUniversal)
+    {
+        if (!confExists)
+        {
+            lg2::info("pwquality configuration file not found, updating it");
+            return true;
+        }
+        return checkVersion(defaultConfigPath, workingConfigPath);
+    }
+    else if (policyAdoptionType == policyAdoptionTypeConditional)
+    {
+        if (!confExists)
+        {
+            lg2::info("pwquality configuration file not found, updating it");
+            return true;
+        }
+        if (std::filesystem::exists(previousConfigDirPath))
+        {
+            for (const auto& entry :
+                 std::filesystem::recursive_directory_iterator(
+                     previousConfigDirPath))
+            {
+                if (entry.is_directory())
+                {
+                    continue;
+                }
+                if (compareFiles(entry.path().string(), workingConfigPath))
+                {
+                    lg2::info("Matched previous pwquality configuration file");
+                    return true;
+                }
+            }
+            return false;
+        }
+        else
+        {
+            lg2::error(
+                "Previous pwquality configuration files directory does not exist");
+            return false;
+        }
+    }
+    else
+    {
+        lg2::error(
+            "Invalid POLICY_UPDATE_ADOPTION_TYPE value, supported values are 1, 2 and 3");
+        return true;
+    }
+}
+
+void UserMgr::passwordPolicyFileCheck(const std::string& firstBootPath,
+                                      const std::string& workingConfigPath,
+                                      const std::string& defaultConfigPath,
+                                      const std::string& previousConfigDirPath)
+{
+    if (!shouldUpdatePolicyFile(workingConfigPath, defaultConfigPath,
+                                previousConfigDirPath))
+    {
+        lg2::info("No update needed for pwquality configuration file");
+        return;
+    }
+
+    if (!std::filesystem::exists(defaultConfigPath))
+    {
+        lg2::error("Default pwquality configuration file does not exist");
+        return;
+    }
+
+    try
+    {
+        std::filesystem::copy(
+            defaultConfigPath, workingConfigPath,
+            std::filesystem::copy_options::overwrite_existing);
+        lg2::info(
+            "Copied default pwquality configuration file to working directory");
+        if (policyUpdatePasswordExpiry)
+        {
+            needPasswordExpiry = std::filesystem::exists(firstBootPath);
+        }
+    }
+    catch (const std::filesystem::filesystem_error& e)
+    {
+        lg2::error("Failed to copy pwquality configuration file: {ERR}", "ERR",
+                   e.what());
+        elog<InternalFailure>();
+    }
+}
+
+void UserMgr::setPasswordExpirePolicy(
+    bool updatePasswordExpiry,
+    const std::initializer_list<const char*>& exclusionList)
+{
+    policyUpdatePasswordExpiry = updatePasswordExpiry;
+    expiryExclusionList.clear();
+    if (!exclusionList.size())
+    {
+        return;
+    }
+
+    expiryExclusionList.reserve(exclusionList.size());
+    for (const char* user : exclusionList)
+    {
+        if (user != nullptr)
+        {
+            expiryExclusionList.emplace_back(user);
+        }
+    }
+}
+
+bool UserMgr::passwordPolicyUpdateUserPasswordExpiration(
+    const std::string& user)
+{
+    if (policyUpdatePasswordExpiry)
+    {
+        if (std::find(expiryExclusionList.begin(), expiryExclusionList.end(),
+                      user) != expiryExclusionList.end())
+        {
+            lg2::info("User '{USERNAME}' is in the exclusion list", "USERNAME",
+                      user);
+            return false;
+        }
+    }
+
+    try
+    {
+        executeUserPasswordExpiry(user.c_str());
+        lg2::info("Password expired for user '{USERNAME}'", "USERNAME", user);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to expire password for user '{USERNAME}'",
+                   "USERNAME", user);
+        return false;
+    }
+}
+
+bool UserMgr::compareFiles(const std::string& file1, const std::string& file2)
+{
+    if (!std::filesystem::exists(file1) || !std::filesystem::exists(file2))
+    {
+        return false;
+    }
+
+    std::ifstream f1(file1, std::ios::binary);
+    std::ifstream f2(file2, std::ios::binary);
+    if (!f1 || !f2)
+    {
+        return false;
+    }
+
+    constexpr size_t bufferSize = 1024;
+    std::array<char, bufferSize> buffer1;
+    std::array<char, bufferSize> buffer2;
+
+    while (f1 && f2)
+    {
+        f1.read(buffer1.data(), bufferSize);
+        f2.read(buffer2.data(), bufferSize);
+
+        const auto count1 = f1.gcount();
+        const auto count2 = f2.gcount();
+
+        if (count1 != count2)
+        {
+            return false;
+        }
+
+        if (count1 == 0)
+        {
+            break;
+        }
+
+        if (!std::equal(buffer1.begin(), buffer1.begin() + count1,
+                        buffer2.begin()))
+        {
+            return false;
+        }
+    }
+
+    return f1.eof() && f2.eof() && !f1.bad() && !f2.bad();
 }
 
 } // namespace user

@@ -254,18 +254,42 @@ class UserMgrInTest : public testing::Test, public UserMgr
   public:
     UserMgrInTest() : UserMgr(busInTest, objectRootInTest)
     {
+        setPolicyAdoptionType(policyAdoptionTypeDefault);
+        initialize();
+
         tempFaillockConfigFile = "/tmp/test-data-XXXXXX";
-        mktemp(tempFaillockConfigFile.data());
+        int fd = mkstemp(tempFaillockConfigFile.data());
+        if (fd < 0)
+        {
+            throw std::runtime_error(
+                "Failed to create temporary faillock config file");
+        }
+        close(fd);
         EXPECT_NO_THROW(
             dumpStringToFile(rawFailLockConfig, tempFaillockConfigFile));
+
         tempPWHistoryConfigFile = "/tmp/test-data-XXXXXX";
-        mktemp(tempPWHistoryConfigFile.data());
+        fd = mkstemp(tempPWHistoryConfigFile.data());
+        if (fd < 0)
+        {
+            throw std::runtime_error(
+                "Failed to create temporary password history config file");
+        }
+        close(fd);
         EXPECT_NO_THROW(
             dumpStringToFile(rawPWHistoryConfig, tempPWHistoryConfigFile));
+
         tempPWQualityConfigFile = "/tmp/test-data-XXXXXX";
-        mktemp(tempPWQualityConfigFile.data());
+        fd = mkstemp(tempPWQualityConfigFile.data());
+        if (fd < 0)
+        {
+            throw std::runtime_error(
+                "Failed to create temporary password quality config file");
+        }
+        close(fd);
         EXPECT_NO_THROW(
             dumpStringToFile(rawPWQualityConfig, tempPWQualityConfigFile));
+
         // Set config files to test files
         faillockConfigFile = tempFaillockConfigFile;
         pwHistoryConfigFile = tempPWHistoryConfigFile;
