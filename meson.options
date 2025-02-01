@@ -51,3 +51,9 @@ option('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
 )
 
 option('ipmi', type : 'feature', value : 'enabled', description : 'Enable/disable ipmi feature.')
+option(
+    'root_user_mgmt',
+    type: 'feature',
+    description: 'Enable management of the root user',
+    value: 'enabled',
+)
