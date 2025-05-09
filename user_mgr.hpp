@@ -48,6 +48,7 @@ inline constexpr size_t redfishHostInterfaceUsers = 15;
 inline constexpr size_t maxSystemUsers = 15 + ipmiMaxUsers +
                                          redfishHostInterfaceUsers;
 extern uint8_t minPasswdLength; // MIN_PASSWORD_LENGTH;
+extern uint8_t maxPasswdLength; // MAX_PASSWORD_LENGTH;
 inline constexpr size_t maxSystemGroupNameLength = 32;
 inline constexpr size_t maxSystemGroupCount = 64;
 
