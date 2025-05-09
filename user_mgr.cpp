@@ -67,6 +67,7 @@ static constexpr int failure = -1;
 static constexpr uint32_t accUnlockTimeout = ACCOUNT_UNLOCK_TIMEOUT;
 static constexpr uint16_t maxFailedAttempts = MAX_FAILED_LOGIN_ATTEMPTS;
 uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
+uint8_t maxPasswdLength = MAX_PASSWORD_LENGTH;
 
 // pam modules related
 static constexpr const char* minPasswdLenProp = "minlen";
@@ -648,12 +649,13 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
 
 uint8_t UserMgr::minPasswordLength(uint8_t value)
 {
-    if (value < minPasswdLength)
+    if (value < minPasswdLength || value > maxPasswdLength)
     {
         std::string valueStr = std::to_string(value);
         lg2::error("Attempting to set minPasswordLength to {VALUE}, less than "
-                   "{MINVALUE}",
-                   "VALUE", value, "MINVALUE", minPasswdLength);
+                   "{MINPASSWORDLENGTH} or greater than {MAXPASSWORDLENGTH}",
+                   "VALUE", value, "MINPASSWORDLENGTH", minPasswdLength,
+                   "MAXPASSWORDLENGTH", maxPasswdLength);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("minPasswordLength"),
                               Argument::ARGUMENT_VALUE(valueStr.data()));
     }

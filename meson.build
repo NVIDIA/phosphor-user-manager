@@ -47,7 +47,12 @@ conf_data.set_quoted('LDAP_CONFIG_BUSNAME', 'xyz.openbmc_project.Ldap.Config',
 conf_data.set_quoted('LDAP_CONF_PERSIST_PATH', '/var/lib/phosphor-ldap-conf',
                       description : 'path of directory having persisted LDAP configuration enabled property.')
 
-conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'))
+conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'),
+              description: 'Minimum password length')
+
+conf_data.set('MAX_PASSWORD_LENGTH', get_option('MAX_PASSWORD_LENGTH'),
+              description: 'Maximum password length')
+
 
 conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
 
