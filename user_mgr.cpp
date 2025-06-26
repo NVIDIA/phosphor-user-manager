@@ -453,11 +453,13 @@ void UserMgr::deleteUser(std::string userName)
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
     throwForDeleteUserInServiceGroup(userName);
-    if (userName == "root")
+    if (userName == "root" ||
+        isRootPrivilegeUser(userName, ROOT_PRIVILEGE_USER_LIST))
     {
         lg2::error("User delete failed '{USERNAME}'", "USERNAME", userName);
-        elog<NotAllowed>(Reason("root user must be present by default on system"
-                                "therefore can't be deleted"));
+        elog<NotAllowed>(
+            Reason("root privilege user must be present by default on system"
+                   "therefore can't be deleted"));
         return;
     }
 
@@ -1721,6 +1723,19 @@ void UserMgr::executeUserModifyUserEnable(const char* userName, bool enabled)
 std::vector<std::string> UserMgr::getFailedAttempt(const char* userName)
 {
     return executeCmd("/usr/sbin/faillock", "--user", userName);
+}
+
+bool UserMgr::isRootPrivilegeUser(
+    const std::string& user, const std::initializer_list<const char*>& userList)
+{
+    for (const char* rootUser : userList)
+    {
+        if (rootUser != nullptr && user == rootUser)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace user

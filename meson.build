@@ -58,6 +58,19 @@ conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'))
 
 conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'))
 
+root_users = get_option('ROOT_PRIVILEGE_USER_LIST')
+quoted_users = []
+
+foreach u : root_users
+  quoted_users += '"@0@"'.format(u)
+endforeach
+
+conf_data.set(
+  'ROOT_PRIVILEGE_USER_LIST',
+  '{' + ', '.join(quoted_users) + '}',
+  description: 'Quoted string list for C++ initializer list'
+)
+
 conf_header = configure_file(output: 'config.h',
     configuration: conf_data)
 

@@ -32,3 +32,9 @@ option('CREATE_USER_HOME_FOLDER',
 )
 
 option('ipmi', type : 'feature', value : 'enabled', description : 'Enable/disable ipmi feature.')
+
+option('ROOT_PRIVILEGE_USER_LIST',
+    type: 'array',
+    value: [],
+    description: 'Users having root user privilege',
+)
