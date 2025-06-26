@@ -705,6 +705,15 @@ class UserMgr : public Ifaces
      */
     virtual DbusUserObj getPrivilegeMapperObject(void);
 
+    /** @brief check whether if the user is a root privilege user
+     *
+     * @param[in] - user
+     * @param[in] - userList
+     * @return - true if the user is a root privilege user
+     */
+    bool
+        isRootPrivilegeUser(const std::string& user,
+                            const std::initializer_list<const char*>& userList);
     friend class TestUserMgr;
 
   protected:

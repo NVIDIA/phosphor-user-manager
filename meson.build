@@ -86,6 +86,19 @@ conf_data.set('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
               '{@0@}'.format(','.join(get_option('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST'))),
               description: 'List of users excluded from password expiry policy updates')
 
+root_users = get_option('ROOT_PRIVILEGE_USER_LIST')
+quoted_users = []
+
+foreach u : root_users
+  quoted_users += '"@0@"'.format(u)
+endforeach
+
+conf_data.set(
+  'ROOT_PRIVILEGE_USER_LIST',
+  '{' + ', '.join(quoted_users) + '}',
+  description: 'Quoted string list for C++ initializer list'
+)
+
 conf_header = configure_file(output: 'config.h',
     configuration: conf_data)
 
