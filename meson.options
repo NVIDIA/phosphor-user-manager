@@ -7,6 +7,12 @@ option('MIN_PASSWORD_LENGTH',
     description: 'Min password Length',
 )
 
+option('MAX_PASSWORD_LENGTH',
+    type: 'integer',
+    value: 64,
+    description: 'Max password Length',
+)
+
 option('ACCOUNT_UNLOCK_TIMEOUT',
     type: 'integer',
     value: 600,

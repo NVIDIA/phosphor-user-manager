@@ -76,11 +76,17 @@ conf_data.set_quoted(
 conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'),
               description: 'Minimum password length')
 
+conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'),
+              description: 'Minimum password length')
+
+conf_data.set('MAX_PASSWORD_LENGTH', get_option('MAX_PASSWORD_LENGTH'),
+              description: 'Maximum password length')
+
 conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'),
               description: 'Account unlock timeout in seconds')
 
 conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'),
-              description: 'Maximum failed login attempts before account lockout')
+              description: 'Maximum failed login attempts')
 
 conf_data.set('CREATE_USER_HOME_FOLDER', get_option('CREATE_USER_HOME_FOLDER'),
               description: 'Whether to create home folder for new users')
