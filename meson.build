@@ -15,7 +15,7 @@ if get_option('root_user_mgmt').allowed()
     add_project_arguments('-DENABLE_ROOT_USER_MGMT', language: 'cpp')
 endif
 if get_option('ipmi').allowed()
-    add_project_arguments('-DENABLE_IPMI', language:'cpp')
+    add_project_arguments('-DENABLE_IPMI', language: 'cpp')
 endif
 conf_data = configuration_data()
 
@@ -73,26 +73,47 @@ conf_data.set_quoted(
     description: 'path of directory having persisted LDAP configuration enabled property.',
 )
 
-conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'),
-              description: 'Minimum password length')
+conf_data.set(
+    'MIN_PASSWORD_LENGTH',
+    get_option('MIN_PASSWORD_LENGTH'),
+    description: 'Minimum password length',
+)
 
-conf_data.set('MIN_PASSWORD_LENGTH', get_option('MIN_PASSWORD_LENGTH'),
-              description: 'Minimum password length')
+conf_data.set(
+    'MIN_PASSWORD_LENGTH',
+    get_option('MIN_PASSWORD_LENGTH'),
+    description: 'Minimum password length',
+)
 
-conf_data.set('MAX_PASSWORD_LENGTH', get_option('MAX_PASSWORD_LENGTH'),
-              description: 'Maximum password length')
+conf_data.set(
+    'MAX_PASSWORD_LENGTH',
+    get_option('MAX_PASSWORD_LENGTH'),
+    description: 'Maximum password length',
+)
 
-conf_data.set('ACCOUNT_UNLOCK_TIMEOUT', get_option('ACCOUNT_UNLOCK_TIMEOUT'),
-              description: 'Account unlock timeout in seconds')
+conf_data.set(
+    'ACCOUNT_UNLOCK_TIMEOUT',
+    get_option('ACCOUNT_UNLOCK_TIMEOUT'),
+    description: 'Account unlock timeout in seconds',
+)
 
-conf_data.set('MAX_FAILED_LOGIN_ATTEMPTS', get_option('MAX_FAILED_LOGIN_ATTEMPTS'),
-              description: 'Maximum failed login attempts')
+conf_data.set(
+    'MAX_FAILED_LOGIN_ATTEMPTS',
+    get_option('MAX_FAILED_LOGIN_ATTEMPTS'),
+    description: 'Maximum failed login attempts',
+)
 
-conf_data.set('CREATE_USER_HOME_FOLDER', get_option('CREATE_USER_HOME_FOLDER'),
-              description: 'Whether to create home folder for new users')
+conf_data.set(
+    'CREATE_USER_HOME_FOLDER',
+    get_option('CREATE_USER_HOME_FOLDER'),
+    description: 'Whether to create home folder for new users',
+)
 
-conf_data.set('SKIP_USERS_IN_PROTECTED_GROUP', get_option('SKIP_USERS_IN_PROTECTED_GROUP'),
-              description: 'Whether to skip users in protected groups')
+conf_data.set(
+    'SKIP_USERS_IN_PROTECTED_GROUP',
+    get_option('SKIP_USERS_IN_PROTECTED_GROUP'),
+    description: 'Whether to skip users in protected groups',
+)
 
 policy_update_adoption_type_as_string = get_option('POLICY_UPDATE_ADOPTION_TYPE')
 if policy_update_adoption_type_as_string == 'default'
@@ -104,19 +125,40 @@ elif policy_update_adoption_type_as_string == 'universal'
 else
     error('Invalid policy update adoption type')
 endif
-conf_data.set('POLICY_UPDATE_ADOPTION_TYPE', policy_update_adoption_type_as_num,
-              description: 'Policy update adoption type')
+conf_data.set(
+    'POLICY_UPDATE_ADOPTION_TYPE',
+    policy_update_adoption_type_as_num,
+    description: 'Policy update adoption type',
+)
 
-conf_data.set('POLICY_UPDATE_PASSWORD_EXPIRY',
-              get_option('POLICY_UPDATE_PASSWORD_EXPIRY').to_string(),
-              description: 'Password expiry policy update setting')
+conf_data.set(
+    'POLICY_UPDATE_PASSWORD_EXPIRY',
+    get_option('POLICY_UPDATE_PASSWORD_EXPIRY').to_string(),
+    description: 'Password expiry policy update setting',
+)
 
-conf_data.set('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
-              '{@0@}'.format(','.join(get_option('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST'))),
-              description: 'List of users excluded from password expiry policy updates')
+conf_data.set(
+    'POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
+    '{@0@}'.format(
+        ','.join(get_option('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST')),
+    ),
+    description: 'List of users excluded from password expiry policy updates',
+)
 
-conf_header = configure_file(output: 'config.h',
-    configuration: conf_data)
+root_users = get_option('ROOT_PRIVILEGE_USER_LIST')
+quoted_users = []
+
+foreach u : root_users
+    quoted_users += '"@0@"'.format(u)
+endforeach
+
+conf_data.set(
+    'ROOT_PRIVILEGE_USER_LIST',
+    '{' + ', '.join(quoted_users) + '}',
+    description: 'Quoted string list for C++ initializer list',
+)
+
+conf_header = configure_file(output: 'config.h', configuration: conf_data)
 
 phosphor_dbus_interfaces_dep = dependency('phosphor-dbus-interfaces')
 sdbusplus_dep = dependency('sdbusplus')

@@ -41,8 +41,8 @@ void dumpStringToFile(const std::string& str, const std::string& filePath)
 {
     std::ofstream outputFileStream;
 
-    outputFileStream.exceptions(std::ofstream::failbit | std::ofstream::badbit |
-                                std::ofstream::eofbit);
+    outputFileStream.exceptions(
+        std::ofstream::failbit | std::ofstream::badbit | std::ofstream::eofbit);
 
     outputFileStream.open(filePath, std::ios::out);
     outputFileStream << str << "\n" << std::flush;
@@ -122,9 +122,9 @@ maxrepeat=3)";
     EXPECT_NO_THROW(dumpStringToFile(defaultContent, defaultConfigPath));
 
     // With non-matching previous config, no update should occur
-    EXPECT_NO_THROW(passwordPolicyFileCheck(firstBootPath, workingConfigPath,
-                                            defaultConfigPath,
-                                            previousConfigDirPath));
+    EXPECT_NO_THROW(
+        passwordPolicyFileCheck(firstBootPath, workingConfigPath,
+                                defaultConfigPath, previousConfigDirPath));
 
     // Read and compare the contents after the check - should still match
     // original content
@@ -159,25 +159,27 @@ TEST_F(UserMgrInTestAdoptionConditional, PasswordPolicyFileCheckWithUpdate)
     ASSERT_EQ(mkdir(previousConfigDirPath.c_str(), 0755), 0);
 
     // Working config with lower version (note: dumpStringToFile adds a newline)
-    std::string workingContent = "enforce_for_root\n"
-                                 "minlen=10\n"
-                                 "difok=1\n"
-                                 "#  version=16";
+    std::string workingContent =
+        "enforce_for_root\n"
+        "minlen=10\n"
+        "difok=1\n"
+        "#  version=16";
 
     // Default config with higher version
-    std::string defaultContent = "enforce_for_root\n"
-                                 "minlen=13\n"
-                                 "difok=0\n"
-                                 "#  version=17\n"
-                                 "lcredit=-1\n"
-                                 "ocredit=-1\n"
-                                 "dcredit=-1\n"
-                                 "ucredit=-1\n"
-                                 "minclass=4\n"
-                                 "usercheck=1\n"
-                                 "dictcheck=1\n"
-                                 "maxsequence=3\n"
-                                 "maxrepeat=3";
+    std::string defaultContent =
+        "enforce_for_root\n"
+        "minlen=13\n"
+        "difok=0\n"
+        "#  version=17\n"
+        "lcredit=-1\n"
+        "ocredit=-1\n"
+        "dcredit=-1\n"
+        "ucredit=-1\n"
+        "minclass=4\n"
+        "usercheck=1\n"
+        "dictcheck=1\n"
+        "maxsequence=3\n"
+        "maxrepeat=3";
 
     // Write the initial configs
     EXPECT_NO_THROW(dumpStringToFile(workingContent, workingConfigPath));
@@ -199,9 +201,9 @@ TEST_F(UserMgrInTestAdoptionConditional, PasswordPolicyFileCheckWithUpdate)
     EXPECT_EQ(initialWorkingContent, workingContent + "\n");
 
     // Call the function under test
-    EXPECT_NO_THROW(passwordPolicyFileCheck(firstBootPath, workingConfigPath,
-                                            defaultConfigPath,
-                                            previousConfigDirPath));
+    EXPECT_NO_THROW(
+        passwordPolicyFileCheck(firstBootPath, workingConfigPath,
+                                defaultConfigPath, previousConfigDirPath));
 
     // Read final contents
     std::ifstream workingFile(workingConfigPath);
@@ -273,9 +275,9 @@ maxrepeat=3)";
 
     // Previous configuration directory is missing, no update should be
     // performed
-    EXPECT_NO_THROW(passwordPolicyFileCheck(firstBootPath, workingConfigPath,
-                                            defaultConfigPath,
-                                            previousConfigDirPath));
+    EXPECT_NO_THROW(
+        passwordPolicyFileCheck(firstBootPath, workingConfigPath,
+                                defaultConfigPath, previousConfigDirPath));
 
     // Verify working config was not modified
     EXPECT_FALSE(compareFiles(defaultConfigPath, workingConfigPath));
@@ -319,34 +321,36 @@ TEST_F(UserMgrInTestAdoptionUniversal, PasswordPolicyFileCheckWithHigherVersion)
     ASSERT_EQ(mkdir(previousConfigDirPath.c_str(), 0755), 0);
 
     // Working config with lower version
-    std::string workingContent = "enforce_for_root\n"
-                                 "minlen=10\n"
-                                 "difok=1\n"
-                                 "#  version=16";
+    std::string workingContent =
+        "enforce_for_root\n"
+        "minlen=10\n"
+        "difok=1\n"
+        "#  version=16";
 
     // Default config with higher version
-    std::string defaultContent = "enforce_for_root\n"
-                                 "minlen=13\n"
-                                 "difok=0\n"
-                                 "#  version=17\n"
-                                 "lcredit=-1\n"
-                                 "ocredit=-1\n"
-                                 "dcredit=-1\n"
-                                 "ucredit=-1\n"
-                                 "minclass=4\n"
-                                 "usercheck=1\n"
-                                 "dictcheck=1\n"
-                                 "maxsequence=3\n"
-                                 "maxrepeat=3";
+    std::string defaultContent =
+        "enforce_for_root\n"
+        "minlen=13\n"
+        "difok=0\n"
+        "#  version=17\n"
+        "lcredit=-1\n"
+        "ocredit=-1\n"
+        "dcredit=-1\n"
+        "ucredit=-1\n"
+        "minclass=4\n"
+        "usercheck=1\n"
+        "dictcheck=1\n"
+        "maxsequence=3\n"
+        "maxrepeat=3";
 
     // Write the initial configs
     EXPECT_NO_THROW(dumpStringToFile(workingContent, workingConfigPath));
     EXPECT_NO_THROW(dumpStringToFile(defaultContent, defaultConfigPath));
 
     // Call the function under test
-    EXPECT_NO_THROW(passwordPolicyFileCheck(firstBootPath, workingConfigPath,
-                                            defaultConfigPath,
-                                            previousConfigDirPath));
+    EXPECT_NO_THROW(
+        passwordPolicyFileCheck(firstBootPath, workingConfigPath,
+                                defaultConfigPath, previousConfigDirPath));
 
     // Read final contents
     std::ifstream workingFile(workingConfigPath);
@@ -390,33 +394,35 @@ TEST_F(UserMgrInTestAdoptionUniversal, PasswordPolicyFileCheckWithNoVersion)
     ASSERT_EQ(mkdir(previousConfigDirPath.c_str(), 0755), 0);
 
     // Working config with no version
-    std::string workingContent = "enforce_for_root\n"
-                                 "minlen=10\n"
-                                 "difok=1";
+    std::string workingContent =
+        "enforce_for_root\n"
+        "minlen=10\n"
+        "difok=1";
 
     // Default config with version
-    std::string defaultContent = "enforce_for_root\n"
-                                 "minlen=13\n"
-                                 "difok=0\n"
-                                 "#  version=17\n"
-                                 "lcredit=-1\n"
-                                 "ocredit=-1\n"
-                                 "dcredit=-1\n"
-                                 "ucredit=-1\n"
-                                 "minclass=4\n"
-                                 "usercheck=1\n"
-                                 "dictcheck=1\n"
-                                 "maxsequence=3\n"
-                                 "maxrepeat=3";
+    std::string defaultContent =
+        "enforce_for_root\n"
+        "minlen=13\n"
+        "difok=0\n"
+        "#  version=17\n"
+        "lcredit=-1\n"
+        "ocredit=-1\n"
+        "dcredit=-1\n"
+        "ucredit=-1\n"
+        "minclass=4\n"
+        "usercheck=1\n"
+        "dictcheck=1\n"
+        "maxsequence=3\n"
+        "maxrepeat=3";
 
     // Write the initial configs
     EXPECT_NO_THROW(dumpStringToFile(workingContent, workingConfigPath));
     EXPECT_NO_THROW(dumpStringToFile(defaultContent, defaultConfigPath));
 
     // Call the function under test
-    EXPECT_NO_THROW(passwordPolicyFileCheck(firstBootPath, workingConfigPath,
-                                            defaultConfigPath,
-                                            previousConfigDirPath));
+    EXPECT_NO_THROW(
+        passwordPolicyFileCheck(firstBootPath, workingConfigPath,
+                                defaultConfigPath, previousConfigDirPath));
 
     // Read final contents
     std::ifstream workingFile(workingConfigPath);

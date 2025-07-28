@@ -45,8 +45,8 @@ inline constexpr size_t ipmiMaxUsers = 15;
 inline constexpr size_t ipmiMaxUsers = 0;
 #endif
 inline constexpr size_t redfishHostInterfaceUsers = 15;
-inline constexpr size_t maxSystemUsers = 15 + ipmiMaxUsers +
-                                         redfishHostInterfaceUsers;
+inline constexpr size_t maxSystemUsers =
+    15 + ipmiMaxUsers + redfishHostInterfaceUsers;
 extern uint8_t minPasswdLength; // MIN_PASSWORD_LENGTH;
 extern uint8_t maxPasswdLength; // MAX_PASSWORD_LENGTH;
 inline constexpr size_t maxSystemGroupNameLength = 32;
@@ -705,6 +705,15 @@ class UserMgr : public Ifaces
      */
     virtual DbusUserObj getPrivilegeMapperObject(void);
 
+    /** @brief check whether if the user is a root privilege user
+     *
+     * @param[in] - user
+     * @param[in] - userList
+     * @return - true if the user is a root privilege user
+     */
+    bool isRootPrivilegeUser(
+        const std::string& user,
+        const std::initializer_list<const char*>& userList);
     friend class TestUserMgr;
 
   protected:

@@ -1282,15 +1282,15 @@ TEST_F(UserMgrInTest, CheckAndThrowForGroupNotExist)
 TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
 {
 #ifdef ENABLE_IPMI
-    EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
-                testing::UnorderedElementsAre("redfish", "ipmi", "ssh",
-                                              "service", "redfish-hostiface",
-                                              "hostconsole"));
+    EXPECT_THAT(
+        UserMgr::readAllGroupsOnSystem(),
+        testing::UnorderedElementsAre("redfish", "ipmi", "ssh", "service",
+                                      "redfish-hostiface", "hostconsole"));
 #else
-    EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
-                testing::UnorderedElementsAre("redfish", "ssh", "service",
-                                              "redfish-hostiface",
-                                              "hostconsole"));
+    EXPECT_THAT(
+        UserMgr::readAllGroupsOnSystem(),
+        testing::UnorderedElementsAre("redfish", "ssh", "service",
+                                      "redfish-hostiface", "hostconsole"));
 #endif
 }
 

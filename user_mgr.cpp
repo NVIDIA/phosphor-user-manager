@@ -250,9 +250,9 @@ void UserMgr::throwForDeleteUserInServiceGroup(const std::string& userName)
         lg2::error(
             "Not allowed to delete user belongs to service group '{USERNAME}'",
             "USERNAME", userName);
-        elog<NotAllowed>(
-            Reason("service group users are pre configured on the device"
-                   "therefore can't be deleted"));
+        elog<NotAllowed>(Reason(
+            "service group users are pre configured on the device"
+            "therefore can't be deleted"));
     }
 }
 
@@ -461,11 +461,13 @@ void UserMgr::deleteUser(std::string userName)
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
     throwForDeleteUserInServiceGroup(userName);
-    if (userName == "root")
+    if (userName == "root" ||
+        isRootPrivilegeUser(userName, ROOT_PRIVILEGE_USER_LIST))
     {
         lg2::error("User delete failed '{USERNAME}'", "USERNAME", userName);
-        elog<NotAllowed>(Reason("root user must be present by default on system"
-                                "therefore can't be deleted"));
+        elog<NotAllowed>(Reason(
+            "root privilege user must be present by default on system"
+            "therefore can't be deleted"));
         return;
     }
 
@@ -1636,8 +1638,8 @@ void UserMgr::initUserObjects(void)
             }
 #ifdef SKIP_USERS_IN_PROTECTED_GROUP
             if (std::find(protectedGroupUsers.begin(),
-                          protectedGroupUsers.end(),
-                          user) != protectedGroupUsers.end())
+                          protectedGroupUsers.end(), user) !=
+                protectedGroupUsers.end())
             {
                 continue;
             }
@@ -2038,6 +2040,19 @@ bool UserMgr::compareFiles(const std::string& file1, const std::string& file2)
     }
 
     return f1.eof() && f2.eof() && !f1.bad() && !f2.bad();
+}
+
+bool UserMgr::isRootPrivilegeUser(
+    const std::string& user, const std::initializer_list<const char*>& userList)
+{
+    for (const char* rootUser : userList)
+    {
+        if (rootUser != nullptr && user == rootUser)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace user

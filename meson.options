@@ -1,65 +1,91 @@
 option('tests', type: 'feature', description: 'Build tests', value: 'enabled')
-option('root_user_mgmt', type: 'feature', description: 'Enable management of the root user', value: 'enabled')
-
-option('MIN_PASSWORD_LENGTH',
-    type: 'integer',
-    value: 8,
-    description: 'Min password Length',
-)
-
-option('MAX_PASSWORD_LENGTH',
-    type: 'integer',
-    value: 64,
-    description: 'Max password Length',
-)
-
-option('ACCOUNT_UNLOCK_TIMEOUT',
-    type: 'integer',
-    value: 600,
-    description: 'Account unlock timeout',
-)
-
-option('MAX_FAILED_LOGIN_ATTEMPTS',
-    type: 'integer',
-    value: 3,
-    description: 'Maximum number of failed login attempts',
-)
-
-option('CREATE_USER_HOME_FOLDER',
-    type: 'boolean',
-    value: true,
-    description: 'Enable creating user home directory',
-)
-
-option('SKIP_USERS_IN_PROTECTED_GROUP',
-    type: 'boolean',
-    value: false,
-    description: 'Enable not init users in protected group',
-)
-
-option('POLICY_UPDATE_ADOPTION_TYPE',
-    type: 'combo',
-    choices: ['default', 'conditional', 'universal'],
-    value: 'default',
-    description: 'New password policy adoption method'
-)
-
-option('POLICY_UPDATE_PASSWORD_EXPIRY',
-    type: 'boolean',
-    value: true,
-    description: 'Expire user passwords during automatic password policy update',
-)
-
-option('POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
-    type: 'array',
-    value: [],
-    description: 'Users for which automatic password expiry is disabled',
-)
-
-option('ipmi', type : 'feature', value : 'enabled', description : 'Enable/disable ipmi feature.')
 option(
     'root_user_mgmt',
     type: 'feature',
     description: 'Enable management of the root user',
     value: 'enabled',
+)
+
+option(
+    'MIN_PASSWORD_LENGTH',
+    type: 'integer',
+    value: 8,
+    description: 'Min password Length',
+)
+
+option(
+    'MAX_PASSWORD_LENGTH',
+    type: 'integer',
+    value: 64,
+    description: 'Max password Length',
+)
+
+option(
+    'ACCOUNT_UNLOCK_TIMEOUT',
+    type: 'integer',
+    value: 600,
+    description: 'Account unlock timeout',
+)
+
+option(
+    'MAX_FAILED_LOGIN_ATTEMPTS',
+    type: 'integer',
+    value: 3,
+    description: 'Maximum number of failed login attempts',
+)
+
+option(
+    'CREATE_USER_HOME_FOLDER',
+    type: 'boolean',
+    value: true,
+    description: 'Enable creating user home directory',
+)
+
+option(
+    'SKIP_USERS_IN_PROTECTED_GROUP',
+    type: 'boolean',
+    value: false,
+    description: 'Enable not init users in protected group',
+)
+
+option(
+    'POLICY_UPDATE_ADOPTION_TYPE',
+    type: 'combo',
+    choices: ['default', 'conditional', 'universal'],
+    value: 'default',
+    description: 'New password policy adoption method',
+)
+
+option(
+    'POLICY_UPDATE_PASSWORD_EXPIRY',
+    type: 'boolean',
+    value: true,
+    description: 'Expire user passwords during automatic password policy update',
+)
+
+option(
+    'POLICY_UPDATE_PASSWORD_EXPIRY_EXCLUSION_LIST',
+    type: 'array',
+    value: [],
+    description: 'Users for which automatic password expiry is disabled',
+)
+
+option(
+    'ipmi',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable/disable ipmi feature.',
+)
+option(
+    'root_user_mgmt',
+    type: 'feature',
+    description: 'Enable management of the root user',
+    value: 'enabled',
+)
+
+option(
+    'ROOT_PRIVILEGE_USER_LIST',
+    type: 'array',
+    value: [],
+    description: 'Users having root user privilege',
 )
