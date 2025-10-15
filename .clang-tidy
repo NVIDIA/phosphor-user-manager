@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 Checks: '
     -*,
     bugprone-unchecked-optional-access,
@@ -6,13 +7,38 @@ Checks: '
 
 WarningsAsErrors: '*'
 HeaderFilterRegex: '.*'
+||||||| 34e6ccd
+Checks: '
+-*,
+readability-identifier-naming'
+
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*'
+=======
+Checks: '-*,
+    bugprone-unchecked-optional-access,
+    readability-identifier-naming
+    '
+>>>>>>> origin/master
 
 CheckOptions:
-  - { key: readability-identifier-naming.ClassCase,          	value: CamelCase  }
-  - { key: readability-identifier-naming.VariableCase, 		value: camelBack  }
-  - { key: readability-identifier-naming.EnumCase,      	value: CamelCase  }
-  - { key: readability-identifier-naming.EnumConstantCase, 	value: camelBack  }
-  - { key: readability-identifier-naming.FunctionCase,  	value: camelBack  }
-  - { key: readability-identifier-naming.ParameterCase, 	value: camelBack  }
-  - { key: readability-identifier-naming.NamespaceCase, 	value: lower_case }
-  - { key: readability-identifier-naming.StructCase,    	value: CamelCase  }
+-   key: readability-identifier-naming.ClassCase
+    value: CamelCase
+-   key: readability-identifier-naming.EnumCase
+    value: CamelCase
+-   key: readability-identifier-naming.EnumConstantCase
+    value: camelBack
+-   key: readability-identifier-naming.FunctionCase
+    value: camelBack
+-   key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+-   key: readability-identifier-naming.ParameterCase
+    value: camelBack
+-   key: readability-identifier-naming.StructCase
+    value: CamelCase
+-   key: readability-identifier-naming.VariableCase
+    value: camelBack
+
+HeaderFilterRegex: .*
+
+WarningsAsErrors: '*'

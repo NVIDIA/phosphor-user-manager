@@ -19,23 +19,73 @@ if not gtest_dep.found() or not gmock_dep.found()
     endif
 endif
 
-test(
-    'ldap_config_test',
-    executable(
+if ldap_dep.found()
+    test(
         'ldap_config_test',
-        ['ldap_config_test.cpp', 'utils_test.cpp'],
-        include_directories: '..',
-        dependencies: [gtest_dep, gmock_dep, phosphor_ldap_conf_dep],
-        link_args: ['-lldap'],
-    ),
-)
+        executable(
+            'ldap_config_test',
+            ['ldap_config_test.cpp', 'utils_test.cpp'],
+            include_directories: '..',
+            dependencies: [
+                gmock_dep,
+                gtest_dep,
+                ldap_dep,
+                phosphor_ldap_conf_dep,
+            ],
+            link_args: ['-lldap'],
+        ),
+    )
+endif
 
 test(
     'user_mgr_test',
     executable(
+<<<<<<< HEAD
+        'ldap_config_test',
+        ['ldap_config_test.cpp', 'utils_test.cpp'],
+||||||| 34e6ccd
+        'ldap_config_test',
+        ['ldap_config_test.cpp',
+         'utils_test.cpp'],
+=======
         'user_mgr_test',
         'user_mgr_test.cpp',
+>>>>>>> origin/master
         include_directories: '..',
+<<<<<<< HEAD
+        dependencies: [gtest_dep, gmock_dep, phosphor_ldap_conf_dep],
+        link_args: ['-lldap'],
+||||||| 34e6ccd
+        dependencies: [
+            gtest_dep,
+            gmock_dep,
+            phosphor_ldap_conf_dep,
+        ],
+        link_args: ['-lldap'],
+=======
+        dependencies: [gtest_dep, gmock_dep, user_manager_dep],
+>>>>>>> origin/master
+    ),
+)
+
+test(
+    'json_serializer_test',
+    executable(
+        'json_serializer_test',
+        'json_serializer_test.cpp',
+        include_directories: '..',
+        dependencies: [gtest_dep, gmock_dep, user_manager_dep],
+    ),
+)
+
+
+test(
+    'execute_cmd_test',
+    executable(
+        'execute_cmd_test',
+        'execute_cmd_test.cpp',
+        include_directories: '..',
+<<<<<<< HEAD
         dependencies: [gtest_dep, gmock_dep, user_manager_dep],
     ),
 )
@@ -48,5 +98,14 @@ test(
         'user_mgr_test_adoption.cpp',
         include_directories: '..',
         dependencies: [gtest_dep, gmock_dep, user_manager_dep],
+||||||| 34e6ccd
+        dependencies: [
+            gtest_dep,
+            gmock_dep,
+            user_manager_dep,
+        ],
+=======
+        dependencies: [gtest_dep, gmock_dep, phosphor_logging_dep],
+>>>>>>> origin/master
     ),
 )

@@ -14,10 +14,12 @@
 // limitations under the License.
 */
 #pragma once
+#include "json_serializer.hpp"
 #include "users.hpp"
 
-#include <boost/process/child.hpp>
-#include <boost/process/io.hpp>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/lg2.hpp>
@@ -26,6 +28,8 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/AccountPolicy/server.hpp>
 #include <xyz/openbmc_project/User/Manager/server.hpp>
+#include <xyz/openbmc_project/User/MultiFactorAuthConfiguration/server.hpp>
+#include <xyz/openbmc_project/User/TOTPState/server.hpp>
 
 #include <fstream>
 #include <optional>
@@ -41,6 +45,7 @@ namespace user
 {
 #ifdef ENABLE_IPMI
 inline constexpr size_t ipmiMaxUsers = 15;
+<<<<<<< HEAD
 #else
 inline constexpr size_t ipmiMaxUsers = 0;
 #endif
@@ -49,6 +54,14 @@ inline constexpr size_t maxSystemUsers =
     15 + ipmiMaxUsers + redfishHostInterfaceUsers;
 extern uint8_t minPasswdLength; // MIN_PASSWORD_LENGTH;
 extern uint8_t maxPasswdLength; // MAX_PASSWORD_LENGTH;
+||||||| 34e6ccd
+inline constexpr size_t maxSystemUsers = 30;
+inline constexpr uint8_t minPasswdLength = 8;
+=======
+inline constexpr size_t maxSystemUsers = 30;
+inline constexpr uint8_t minPasswdLength = 8;
+extern uint8_t maxPasswdLength; // MAX_PASSWORD_LENGTH;
+>>>>>>> origin/master
 inline constexpr size_t maxSystemGroupNameLength = 32;
 inline constexpr size_t maxSystemGroupCount = 64;
 
@@ -62,7 +75,14 @@ using UserSSHLists =
 using AccountPolicyIface =
     sdbusplus::xyz::openbmc_project::User::server::AccountPolicy;
 
-using Ifaces = sdbusplus::server::object_t<UserMgrIface, AccountPolicyIface>;
+using MultiFactorAuthConfigurationIface =
+    sdbusplus::xyz::openbmc_project::User::server::MultiFactorAuthConfiguration;
+
+using TOTPStateIface = sdbusplus::xyz::openbmc_project::User::server::TOTPState;
+
+using Ifaces = sdbusplus::server::object_t<UserMgrIface, AccountPolicyIface,
+                                           MultiFactorAuthConfigurationIface,
+                                           TOTPStateIface>;
 
 using Privilege = std::string;
 using GroupList = std::vector<std::string>;
@@ -85,6 +105,8 @@ using DbusUserObjValue = std::map<Interface, DbusUserObjProperties>;
 
 using DbusUserObj = std::map<DbusUserObjPath, DbusUserObjValue>;
 
+using MultiFactorAuthType = sdbusplus::common::xyz::openbmc_project::user::
+    MultiFactorAuthConfiguration::Type;
 std::string getCSVFromVector(std::span<const std::string> vec);
 
 bool removeStringFromCSV(std::string& csvStr, const std::string& delStr);
@@ -92,30 +114,108 @@ bool removeStringFromCSV(std::string& csvStr, const std::string& delStr);
 template <typename... ArgTypes>
 std::vector<std::string> executeCmd(const char* path, ArgTypes&&... tArgs)
 {
-    std::vector<std::string> stdOutput;
-    boost::process::ipstream stdOutStream;
-    boost::process::child execProg(path, const_cast<char*>(tArgs)...,
-                                   boost::process::std_out > stdOutStream);
-    std::string stdOutLine;
+    int pipefd[2];
 
-    while (stdOutStream && std::getline(stdOutStream, stdOutLine) &&
-           !stdOutLine.empty())
+    if (pipe(pipefd) == -1)
     {
-        stdOutput.emplace_back(stdOutLine);
+        lg2::error("Failed to create pipe: {ERROR}", "ERROR", strerror(errno));
+        phosphor::logging::elog<
+            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure>();
+        return {};
     }
 
-    execProg.wait();
+    pid_t pid = fork();
 
-    int retCode = execProg.exit_code();
-    if (retCode)
+    if (pid == -1)
+    {
+        lg2::error("Failed to fork process: {ERROR}", "ERROR", strerror(errno));
+        phosphor::logging::elog<
+            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure>();
+        close(pipefd[0]); // Close read end of pipe
+        close(pipefd[1]); // Close write end of pipe
+        return {};
+    }
+
+    if (pid == 0)         // Child process
+    {
+        close(pipefd[0]); // Close read end of pipe
+
+        // Redirect write end of the pipe to stdout.
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1)
+        {
+            lg2::error("Failed to redirect stdout: {ERROR}", "ERROR",
+                       strerror(errno));
+            _exit(EXIT_FAILURE);
+        }
+        close(pipefd[1]); // Close write end of pipe
+
+        std::vector<const char*> args = {path};
+        (args.emplace_back(const_cast<const char*>(tArgs)), ...);
+        args.emplace_back(nullptr);
+
+        execv(path, const_cast<char* const*>(args.data()));
+
+        // If exec returns, an error occurred
+        lg2::error("Failed to execute command '{PATH}': {ERROR}", "PATH", path,
+                   "ERROR", strerror(errno));
+        _exit(EXIT_FAILURE);
+    }
+
+    // Parent process.
+
+    close(pipefd[1]); // Close write end of pipe
+
+    FILE* fp = fdopen(pipefd[0], "r");
+    if (fp == nullptr)
+    {
+        lg2::error("Failed to open pipe for reading: {ERROR}", "ERROR",
+                   strerror(errno));
+        close(pipefd[0]);
+        phosphor::logging::elog<
+            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure>();
+        return {};
+    }
+
+    std::vector<std::string> results;
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), fp) != nullptr)
+    {
+        std::string line = buffer;
+        if (!line.empty() && line.back() == '\n')
+        {
+            line.pop_back(); // Remove newline character
+        }
+        results.emplace_back(line);
+    }
+
+    fclose(fp);
+    close(pipefd[0]);
+
+    int status;
+    while (waitpid(pid, &status, 0) == -1)
+    {
+        // Need to retry on EINTR.
+        if (errno == EINTR)
+        {
+            continue;
+        }
+
+        lg2::error("Failed to wait for child process: {ERROR}", "ERROR",
+                   strerror(errno));
+        phosphor::logging::elog<
+            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure>();
+        return {};
+    }
+
+    if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
     {
         lg2::error("Command {PATH} execution failed, return code {RETCODE}",
-                   "PATH", path, "RETCODE", retCode);
+                   "PATH", path, "RETCODE", WEXITSTATUS(status));
         phosphor::logging::elog<
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure>();
     }
 
-    return stdOutput;
+    return results;
 }
 
 /** @class UserMgr
@@ -307,8 +407,19 @@ class UserMgr : public Ifaces
     void createGroup(std::string groupName) override;
 
     void deleteGroup(std::string groupName) override;
-
+    MultiFactorAuthType enabled() const override
+    {
+        return MultiFactorAuthConfigurationIface::enabled();
+    }
+    MultiFactorAuthType enabled(MultiFactorAuthType value,
+                                bool skipSignal) override;
+    bool secretKeyRequired(std::string userName) override;
     static std::vector<std::string> readAllGroupsOnSystem();
+    void load();
+    JsonSerializer& getSerializer()
+    {
+        return serializer;
+    }
 
   protected:
     /** @brief get pam argument value
@@ -624,6 +735,8 @@ class UserMgr : public Ifaces
     /** @brief object path */
     const std::string path;
 
+    /** @brief serializer for mfa */
+    JsonSerializer serializer;
     /** @brief privilege manager container */
     const std::vector<std::string> privMgr = {"priv-admin", "priv-operator",
                                               "priv-user"};
@@ -632,8 +745,8 @@ class UserMgr : public Ifaces
     std::vector<std::string> groupsMgr;
 
     /** @brief map container to hold users object */
-    using UserName = std::string;
-    std::unordered_map<UserName, std::unique_ptr<phosphor::user::Users>>
+
+    std::unordered_map<std::string, std::unique_ptr<phosphor::user::Users>>
         usersList;
 
     /** @brief Flag indicating if password expiration will be examined */

@@ -30,7 +30,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <boost/algorithm/string/split.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/lg2.hpp>
@@ -41,6 +40,7 @@
 #include <algorithm>
 #include <array>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <numeric>
 #include <regex>
@@ -56,19 +56,30 @@ namespace user
 static constexpr const char* passwdFileName = "/etc/passwd";
 #ifdef ENABLE_IPMI
 static constexpr size_t ipmiMaxUserNameLen = 16;
+<<<<<<< HEAD
 #else
 static constexpr size_t ipmiMaxUserNameLen = 0;
 #endif
 static constexpr size_t systemMaxUserNameLen = 30;
+||||||| 34e6ccd
+static constexpr size_t systemMaxUserNameLen = 30;
+=======
+static constexpr size_t systemMaxUserNameLen = 100;
+>>>>>>> origin/master
 static constexpr const char* grpSsh = "ssh";
 static constexpr int success = 0;
 static constexpr int failure = -1;
 
+<<<<<<< HEAD
 static constexpr uint32_t accUnlockTimeout = ACCOUNT_UNLOCK_TIMEOUT;
 static constexpr uint16_t maxFailedAttempts = MAX_FAILED_LOGIN_ATTEMPTS;
 uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
 uint8_t maxPasswdLength = MAX_PASSWORD_LENGTH;
 
+||||||| 34e6ccd
+=======
+uint8_t maxPasswdLength = MAX_PASSWORD_LENGTH;
+>>>>>>> origin/master
 // pam modules related
 static constexpr const char* minPasswdLenProp = "minlen";
 static constexpr const char* remOldPasswdCount = "remember";
@@ -126,7 +137,13 @@ using GroupNameDoesNotExists =
 
 namespace
 {
+<<<<<<< HEAD
 #ifdef ENABLE_IPMI
+||||||| 34e6ccd
+
+=======
+constexpr auto mfaConfPath = "/var/lib/usr_mgr.conf";
+>>>>>>> origin/master
 // The hardcoded groups in OpenBMC projects
 constexpr std::array<const char*, 6> predefinedGroups = {
     "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
@@ -165,6 +182,25 @@ void checkAndThrowsForGroupChangeAllowed(const std::string& groupName)
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group Name"),
                               Argument::ARGUMENT_VALUE(groupName.c_str()));
     }
+}
+
+long currentDate()
+{
+    const auto date = std::chrono::duration_cast<std::chrono::days>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+
+    if (date > std::numeric_limits<long>::max())
+    {
+        return std::numeric_limits<long>::max();
+    }
+
+    if (date < std::numeric_limits<long>::min())
+    {
+        return std::numeric_limits<long>::min();
+    }
+
+    return date;
 }
 
 } // namespace
@@ -447,7 +483,7 @@ void UserMgr::createUser(std::string userName,
     usersList.emplace(
         userName, std::make_unique<phosphor::user::Users>(
                       bus, userObj.c_str(), groupNames, priv, enabled, *this));
-
+    serializer.store();
     lg2::info("User '{USERNAME}' created successfully", "USERNAME", userName);
     // send an event
     sendEvent(MESSAGE_TYPE::RESOURCE_CREATED, Entry::Level::Informational,
@@ -485,7 +521,7 @@ void UserMgr::deleteUser(std::string userName)
     }
 
     usersList.erase(userName);
-
+    serializer.store();
     lg2::info("User '{USERNAME}' deleted successfully", "USERNAME", userName);
     // send an event
     std::string dbusObjectPath = usersObjPath;
@@ -669,9 +705,32 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("minPasswordLength"),
                               Argument::ARGUMENT_VALUE(valueStr.data()));
     }
+<<<<<<< HEAD
     if (value == AccountPolicyIface::minPasswordLength())
+||||||| 34e6ccd
+    if (value < minPasswdLength)
+=======
+    if (value < minPasswdLength || value > maxPasswdLength)
+>>>>>>> origin/master
     {
+<<<<<<< HEAD
         return value;
+||||||| 34e6ccd
+        lg2::error("Attempting to set minPasswordLength to {VALUE}, less than "
+                   "{MINVALUE}",
+                   "VALUE", value, "MINVALUE", minPasswdLength);
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME("minPasswordLength"),
+            Argument::ARGUMENT_VALUE(std::to_string(value).c_str()));
+=======
+        std::string valueStr = std::to_string(value);
+        lg2::error("Attempting to set minPasswordLength to {VALUE}, less than "
+                   "{MINPASSWORDLENGTH} or greater than {MAXPASSWORDLENGTH}",
+                   "VALUE", value, "MINPASSWORDLENGTH", minPasswdLength,
+                   "MAXPASSWORDLENGTH", maxPasswdLength);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("minPasswordLength"),
+                              Argument::ARGUMENT_VALUE(valueStr.data()));
+>>>>>>> origin/master
     }
     if (setPamModuleConfValue(pwQualityConfigFile, minPasswdLenProp,
                               std::to_string(value)) != success)
@@ -1180,11 +1239,20 @@ bool UserMgr::isUserEnabled(const std::string& userName)
                             buffer.max_size(), &resultPtr);
     if (!status && (&spwd == resultPtr))
     {
-        if (resultPtr->sp_expire >= 0)
+        // according to chage/usermod code -1 means that account does not expire
+        // https://github.com/shadow-maint/shadow/blob/7a796897e52293efe9e210ab8da32b7aefe65591/src/chage.c
+        if (resultPtr->sp_expire < 0)
         {
-            return false; // user locked out
+            return true;
         }
-        return true;
+
+        // check account expiration date against current date
+        if (resultPtr->sp_expire > currentDate())
+        {
+            return true;
+        }
+
+        return false;
     }
     return false; // assume user is disabled for any error.
 }
@@ -1389,6 +1457,8 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
                          user.get()->userLockedForFailedAttempt());
         userInfo.emplace("UserPasswordExpired",
                          user.get()->userPasswordExpired());
+        userInfo.emplace("TOTPSecretkeyRequired",
+                         user.get()->secretKeyGenerationRequired());
         userInfo.emplace("RemoteUser", false);
     }
     else
@@ -1682,10 +1752,27 @@ void UserMgr::initUserObjects(void)
     needPasswordExpiry = false;
 }
 
+void UserMgr::load()
+{
+    std::optional<std::string> authTypeStr;
+    if (std::filesystem::exists(mfaConfPath) && serializer.load())
+    {
+        serializer.deserialize("authtype", authTypeStr);
+    }
+    auto authType =
+        authTypeStr.transform(MultiFactorAuthConfiguration::convertStringToType)
+            .value_or(std::optional(MultiFactorAuthType::None));
+    if (authType)
+    {
+        enabled(*authType, true);
+    }
+}
+
 UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
     Ifaces(bus, path, Ifaces::action::defer_emit), bus(bus), path(path),
-    faillockConfigFile(defaultFaillockConfigFile),
+    serializer(mfaConfPath), faillockConfigFile(defaultFaillockConfigFile),
     pwHistoryConfigFile(defaultPWHistoryConfigFile),
+<<<<<<< HEAD
     pwQualityConfigFile(workingPWQualityConfigFile)
 {
     /* Left empty intentionally */
@@ -1704,6 +1791,12 @@ void UserMgr::setPolicyAdoptionType(uint8_t policyType)
 }
 
 void UserMgr::initialize()
+||||||| 34e6ccd
+    pwQualityConfigFile(defaultPWQualityConfigFile)
+=======
+    pwQualityConfigFile(defaultPWQualityConfigFile)
+
+>>>>>>> origin/master
 {
     passwordPolicyFileCheck(firstBootCheckPath, workingPWQualityConfigFile,
                             defaultPWQualityConfigFile,
@@ -1714,8 +1807,8 @@ void UserMgr::initialize()
     std::sort(groupsMgr.begin(), groupsMgr.end());
     UserMgrIface::allGroups(groupsMgr);
     initializeAccountPolicy();
+    load();
     initUserObjects();
-
     // emit the signal
     this->emit_object_added();
 }
@@ -1780,6 +1873,7 @@ std::vector<std::string> UserMgr::getFailedAttempt(const char* userName)
     return executeCmd("/usr/sbin/faillock", "--user", userName);
 }
 
+<<<<<<< HEAD
 std::optional<int> UserMgr::getFileVersion(std::ifstream& file)
 {
     static constexpr const char* versionStr = "version=";
@@ -2055,5 +2149,45 @@ bool UserMgr::isRootPrivilegeUser(
     return false;
 }
 
+||||||| 34e6ccd
+=======
+MultiFactorAuthType UserMgr::enabled(MultiFactorAuthType value, bool skipSignal)
+{
+    if (value == enabled())
+    {
+        return value;
+    }
+    switch (value)
+    {
+        case MultiFactorAuthType::None:
+            for (auto type : {MultiFactorAuthType::GoogleAuthenticator})
+            {
+                for (auto& u : usersList)
+                {
+                    u.second->enableMultiFactorAuth(type, false);
+                }
+            }
+            break;
+        default:
+            for (auto& u : usersList)
+            {
+                u.second->enableMultiFactorAuth(value, true);
+            }
+            break;
+    }
+    serializer.serialize(
+        "authtype", MultiFactorAuthConfiguration::convertTypeToString(value));
+    serializer.store();
+    return MultiFactorAuthConfigurationIface::enabled(value, skipSignal);
+}
+bool UserMgr::secretKeyRequired(std::string userName)
+{
+    if (usersList.contains(userName))
+    {
+        return usersList[userName]->secretKeyGenerationRequired();
+    }
+    return false;
+}
+>>>>>>> origin/master
 } // namespace user
 } // namespace phosphor

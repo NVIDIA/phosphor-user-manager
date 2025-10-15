@@ -1,4 +1,5 @@
 option('tests', type: 'feature', description: 'Build tests', value: 'enabled')
+<<<<<<< HEAD
 option(
     'root_user_mgmt',
     type: 'feature',
@@ -89,3 +90,23 @@ option(
     value: [],
     description: 'Users having root user privilege',
 )
+||||||| 34e6ccd
+option('root_user_mgmt', type: 'feature', description: 'Enable management of the root user', value: 'enabled')
+=======
+
+option('ldap', type: 'feature', description: 'Enable LDAP support')
+
+option(
+    'root_user_mgmt',
+    type: 'feature',
+    description: 'Enable management of the root user',
+    value: 'enabled',
+)
+
+option(
+    'MAX_PASSWORD_LENGTH',
+    type: 'integer',
+    value: 64,
+    description: 'Max password Length default value as per NIST guideline recommendation',
+)
+>>>>>>> origin/master

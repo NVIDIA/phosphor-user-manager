@@ -1,6 +1,8 @@
 #include "mock_user_mgr.hpp"
 #include "user_mgr.hpp"
 
+#include <unistd.h>
+
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
@@ -254,6 +256,7 @@ class UserMgrInTest : public testing::Test, public UserMgr
   public:
     UserMgrInTest() : UserMgr(busInTest, objectRootInTest)
     {
+<<<<<<< HEAD
         setPolicyAdoptionType(policyAdoptionTypeDefault);
         initialize();
 
@@ -290,6 +293,57 @@ class UserMgrInTest : public testing::Test, public UserMgr
         EXPECT_NO_THROW(
             dumpStringToFile(rawPWQualityConfig, tempPWQualityConfigFile));
 
+||||||| 34e6ccd
+        tempFaillockConfigFile = "/tmp/test-data-XXXXXX";
+        mktemp(tempFaillockConfigFile.data());
+        EXPECT_NO_THROW(
+            dumpStringToFile(rawFailLockConfig, tempFaillockConfigFile));
+        tempPWHistoryConfigFile = "/tmp/test-data-XXXXXX";
+        mktemp(tempPWHistoryConfigFile.data());
+        EXPECT_NO_THROW(
+            dumpStringToFile(rawPWHistoryConfig, tempPWHistoryConfigFile));
+        tempPWQualityConfigFile = "/tmp/test-data-XXXXXX";
+        mktemp(tempPWQualityConfigFile.data());
+        EXPECT_NO_THROW(
+            dumpStringToFile(rawPWQualityConfig, tempPWQualityConfigFile));
+=======
+        {
+            tempFaillockConfigFile = tempFilePath;
+            int fd = mkstemp(tempFaillockConfigFile.data());
+            EXPECT_NE(-1, fd);
+            EXPECT_NO_THROW(
+                dumpStringToFile(rawFailLockConfig, tempFaillockConfigFile));
+            if (fd != -1)
+            {
+                close(fd);
+            }
+        }
+
+        {
+            tempPWHistoryConfigFile = tempFilePath;
+            int fd = mkstemp(tempPWHistoryConfigFile.data());
+            EXPECT_NE(-1, fd);
+            EXPECT_NO_THROW(
+                dumpStringToFile(rawPWHistoryConfig, tempPWHistoryConfigFile));
+            if (fd != -1)
+            {
+                close(fd);
+            }
+        }
+
+        {
+            tempPWQualityConfigFile = tempFilePath;
+            int fd = mkstemp(tempPWQualityConfigFile.data());
+            EXPECT_NE(-1, fd);
+            EXPECT_NO_THROW(
+                dumpStringToFile(rawPWQualityConfig, tempPWQualityConfigFile));
+            if (fd != -1)
+            {
+                close(fd);
+            }
+        }
+
+>>>>>>> origin/master
         // Set config files to test files
         faillockConfigFile = tempFaillockConfigFile;
         pwHistoryConfigFile = tempPWHistoryConfigFile;
@@ -398,6 +452,8 @@ class UserMgrInTest : public testing::Test, public UserMgr
     MOCK_METHOD(bool, isUserEnabled, (const std::string& userName), (override));
 
   protected:
+    static constexpr auto tempFilePath = "/tmp/test-data-XXXXXX";
+
     static sdbusplus::bus_t busInTest;
     std::string tempFaillockConfigFile;
     std::string tempPWHistoryConfigFile;
@@ -597,7 +653,7 @@ TEST_F(
     UserMgrInTest,
     ThrowForUserNameConstraintsExceedSystemMaxUserNameLenThrowsInvalidArgument)
 {
-    std::string strWith31Chars(31, 'A');
+    std::string strWith31Chars(101, 'A');
     EXPECT_THROW(
         throwForUserNameConstraints(strWith31Chars, {}),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
