@@ -56,30 +56,19 @@ namespace user
 static constexpr const char* passwdFileName = "/etc/passwd";
 #ifdef ENABLE_IPMI
 static constexpr size_t ipmiMaxUserNameLen = 16;
-<<<<<<< HEAD
 #else
 static constexpr size_t ipmiMaxUserNameLen = 0;
 #endif
-static constexpr size_t systemMaxUserNameLen = 30;
-||||||| 34e6ccd
-static constexpr size_t systemMaxUserNameLen = 30;
-=======
 static constexpr size_t systemMaxUserNameLen = 100;
->>>>>>> origin/master
 static constexpr const char* grpSsh = "ssh";
 static constexpr int success = 0;
 static constexpr int failure = -1;
 
-<<<<<<< HEAD
 static constexpr uint32_t accUnlockTimeout = ACCOUNT_UNLOCK_TIMEOUT;
 static constexpr uint16_t maxFailedAttempts = MAX_FAILED_LOGIN_ATTEMPTS;
 uint8_t minPasswdLength = MIN_PASSWORD_LENGTH;
 uint8_t maxPasswdLength = MAX_PASSWORD_LENGTH;
 
-||||||| 34e6ccd
-=======
-uint8_t maxPasswdLength = MAX_PASSWORD_LENGTH;
->>>>>>> origin/master
 // pam modules related
 static constexpr const char* minPasswdLenProp = "minlen";
 static constexpr const char* remOldPasswdCount = "remember";
@@ -137,13 +126,9 @@ using GroupNameDoesNotExists =
 
 namespace
 {
-<<<<<<< HEAD
-#ifdef ENABLE_IPMI
-||||||| 34e6ccd
-
-=======
 constexpr auto mfaConfPath = "/var/lib/usr_mgr.conf";
->>>>>>> origin/master
+
+#ifdef ENABLE_IPMI
 // The hardcoded groups in OpenBMC projects
 constexpr std::array<const char*, 6> predefinedGroups = {
     "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
@@ -695,34 +680,12 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
 
 uint8_t UserMgr::minPasswordLength(uint8_t value)
 {
-    if (value < minPasswdLength || value > maxPasswdLength)
-    {
-        std::string valueStr = std::to_string(value);
-        lg2::error("Attempting to set minPasswordLength to {VALUE}, less than "
-                   "{MINPASSWORDLENGTH} or greater than {MAXPASSWORDLENGTH}",
-                   "VALUE", value, "MINPASSWORDLENGTH", minPasswdLength,
-                   "MAXPASSWORDLENGTH", maxPasswdLength);
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("minPasswordLength"),
-                              Argument::ARGUMENT_VALUE(valueStr.data()));
-    }
-<<<<<<< HEAD
     if (value == AccountPolicyIface::minPasswordLength())
-||||||| 34e6ccd
-    if (value < minPasswdLength)
-=======
-    if (value < minPasswdLength || value > maxPasswdLength)
->>>>>>> origin/master
     {
-<<<<<<< HEAD
         return value;
-||||||| 34e6ccd
-        lg2::error("Attempting to set minPasswordLength to {VALUE}, less than "
-                   "{MINVALUE}",
-                   "VALUE", value, "MINVALUE", minPasswdLength);
-        elog<InvalidArgument>(
-            Argument::ARGUMENT_NAME("minPasswordLength"),
-            Argument::ARGUMENT_VALUE(std::to_string(value).c_str()));
-=======
+    }
+    if (value < minPasswdLength || value > maxPasswdLength)
+    {
         std::string valueStr = std::to_string(value);
         lg2::error("Attempting to set minPasswordLength to {VALUE}, less than "
                    "{MINPASSWORDLENGTH} or greater than {MAXPASSWORDLENGTH}",
@@ -730,7 +693,6 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
                    "MAXPASSWORDLENGTH", maxPasswdLength);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("minPasswordLength"),
                               Argument::ARGUMENT_VALUE(valueStr.data()));
->>>>>>> origin/master
     }
     if (setPamModuleConfValue(pwQualityConfigFile, minPasswdLenProp,
                               std::to_string(value)) != success)
@@ -739,7 +701,6 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
                    value);
         elog<InternalFailure>();
     }
-
     auto ret = AccountPolicyIface::minPasswordLength(value);
     // send event.
     std::vector<std::string> messageArgs = {"MinPasswordLength",
@@ -762,7 +723,6 @@ uint8_t UserMgr::rememberOldPasswordTimes(uint8_t value)
                    value);
         elog<InternalFailure>();
     }
-
     return AccountPolicyIface::rememberOldPasswordTimes(value);
 }
 
@@ -893,11 +853,7 @@ int UserMgr::setPamModuleConfValue(const std::string& confFile,
         lg2::error("Failed to open pam configuration file {FILENAME}",
                    "FILENAME", confFile);
         // Delete the unused tmp file
-        if (std::remove(tmpConfFile.c_str()) != 0)
-        {
-            lg2::error("Failed to remove temporary file {FILENAME}", "FILENAME",
-                       tmpConfFile);
-        }
+        std::remove(tmpConfFile.c_str());
         return failure;
     }
     std::string line;
@@ -943,11 +899,7 @@ int UserMgr::setPamModuleConfValue(const std::string& confFile,
         }
     }
     // No changes, so delete the unused tmp file
-    if (std::remove(tmpConfFile.c_str()) != 0)
-    {
-        lg2::error("Failed to remove temporary file {FILENAME}", "FILENAME",
-                   tmpConfFile);
-    }
+    std::remove(tmpConfFile.c_str());
     return failure;
 }
 
@@ -1772,7 +1724,6 @@ UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
     Ifaces(bus, path, Ifaces::action::defer_emit), bus(bus), path(path),
     serializer(mfaConfPath), faillockConfigFile(defaultFaillockConfigFile),
     pwHistoryConfigFile(defaultPWHistoryConfigFile),
-<<<<<<< HEAD
     pwQualityConfigFile(workingPWQualityConfigFile)
 {
     /* Left empty intentionally */
@@ -1791,12 +1742,6 @@ void UserMgr::setPolicyAdoptionType(uint8_t policyType)
 }
 
 void UserMgr::initialize()
-||||||| 34e6ccd
-    pwQualityConfigFile(defaultPWQualityConfigFile)
-=======
-    pwQualityConfigFile(defaultPWQualityConfigFile)
-
->>>>>>> origin/master
 {
     passwordPolicyFileCheck(firstBootCheckPath, workingPWQualityConfigFile,
                             defaultPWQualityConfigFile,
@@ -1873,7 +1818,6 @@ std::vector<std::string> UserMgr::getFailedAttempt(const char* userName)
     return executeCmd("/usr/sbin/faillock", "--user", userName);
 }
 
-<<<<<<< HEAD
 std::optional<int> UserMgr::getFileVersion(std::ifstream& file)
 {
     static constexpr const char* versionStr = "version=";
@@ -2149,8 +2093,6 @@ bool UserMgr::isRootPrivilegeUser(
     return false;
 }
 
-||||||| 34e6ccd
-=======
 MultiFactorAuthType UserMgr::enabled(MultiFactorAuthType value, bool skipSignal)
 {
     if (value == enabled())
@@ -2188,6 +2130,5 @@ bool UserMgr::secretKeyRequired(std::string userName)
     }
     return false;
 }
->>>>>>> origin/master
 } // namespace user
 } // namespace phosphor

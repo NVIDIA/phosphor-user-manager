@@ -45,7 +45,6 @@ namespace user
 {
 #ifdef ENABLE_IPMI
 inline constexpr size_t ipmiMaxUsers = 15;
-<<<<<<< HEAD
 #else
 inline constexpr size_t ipmiMaxUsers = 0;
 #endif
@@ -54,14 +53,6 @@ inline constexpr size_t maxSystemUsers =
     15 + ipmiMaxUsers + redfishHostInterfaceUsers;
 extern uint8_t minPasswdLength; // MIN_PASSWORD_LENGTH;
 extern uint8_t maxPasswdLength; // MAX_PASSWORD_LENGTH;
-||||||| 34e6ccd
-inline constexpr size_t maxSystemUsers = 30;
-inline constexpr uint8_t minPasswdLength = 8;
-=======
-inline constexpr size_t maxSystemUsers = 30;
-inline constexpr uint8_t minPasswdLength = 8;
-extern uint8_t maxPasswdLength; // MAX_PASSWORD_LENGTH;
->>>>>>> origin/master
 inline constexpr size_t maxSystemGroupNameLength = 32;
 inline constexpr size_t maxSystemGroupCount = 64;
 

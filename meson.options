@@ -1,5 +1,4 @@
 option('tests', type: 'feature', description: 'Build tests', value: 'enabled')
-<<<<<<< HEAD
 option(
     'root_user_mgmt',
     type: 'feature',
@@ -12,13 +11,6 @@ option(
     type: 'integer',
     value: 8,
     description: 'Min password Length',
-)
-
-option(
-    'MAX_PASSWORD_LENGTH',
-    type: 'integer',
-    value: 64,
-    description: 'Max password Length',
 )
 
 option(
@@ -77,12 +69,6 @@ option(
     value: 'enabled',
     description: 'Enable/disable ipmi feature.',
 )
-option(
-    'root_user_mgmt',
-    type: 'feature',
-    description: 'Enable management of the root user',
-    value: 'enabled',
-)
 
 option(
     'ROOT_PRIVILEGE_USER_LIST',
@@ -90,9 +76,6 @@ option(
     value: [],
     description: 'Users having root user privilege',
 )
-||||||| 34e6ccd
-option('root_user_mgmt', type: 'feature', description: 'Enable management of the root user', value: 'enabled')
-=======
 
 option('ldap', type: 'feature', description: 'Enable LDAP support')
 
@@ -109,4 +92,3 @@ option(
     value: 64,
     description: 'Max password Length default value as per NIST guideline recommendation',
 )
->>>>>>> origin/master

@@ -12,25 +12,12 @@ project(
 )
 
 if get_option('root_user_mgmt').allowed()
-<<<<<<< HEAD
     add_project_arguments('-DENABLE_ROOT_USER_MGMT', language: 'cpp')
 endif
 if get_option('ipmi').allowed()
     add_project_arguments('-DENABLE_IPMI', language: 'cpp')
-||||||| 34e6ccd
-    add_project_arguments('-DENABLE_ROOT_USER_MGMT', language:'cpp')
-=======
-    add_project_arguments('-DENABLE_ROOT_USER_MGMT', language: 'cpp')
->>>>>>> origin/master
 endif
 conf_data = configuration_data()
-
-<<<<<<< HEAD
-conf_data.set_quoted(
-    'USER_MANAGER_BUSNAME',
-    'xyz.openbmc_project.User.Manager',
-    description: 'The DBus busname to own.',
-)
 
 conf_data.set(
     'CLASS_VERSION',
@@ -61,154 +48,65 @@ conf_data.set_quoted(
     '/xyz/openbmc_project/user/ldap',
     description: 'LDAP configuration root.',
 )
-||||||| 34e6ccd
-conf_data.set_quoted('USER_MANAGER_BUSNAME', 'xyz.openbmc_project.User.Manager',
-                      description : 'The DBus busname to own.')
-=======
 conf_data.set_quoted(
     'USER_MANAGER_BUSNAME',
     'xyz.openbmc_project.User.Manager',
     description: 'The DBus busname to own.',
 )
->>>>>>> origin/master
 
-<<<<<<< HEAD
 conf_data.set_quoted(
     'LDAP_CONFIG_DBUS_OBJ_PATH',
     '/xyz/openbmc_project/user/ldap/config',
     description: 'D-Bus path of LDAP config object.',
 )
-||||||| 34e6ccd
-conf_data.set('CLASS_VERSION', 1,
-                      description : 'Class version to register with Cereal.')
-=======
-conf_data.set(
-    'CLASS_VERSION',
-    1,
-    description: 'Class version to register with Cereal.',
-)
->>>>>>> origin/master
 
-<<<<<<< HEAD
 conf_data.set_quoted(
     'LDAP_CONFIG_BUSNAME',
     'xyz.openbmc_project.Ldap.Config',
     description: 'D-Bus busname of LDAP config service.',
 )
-||||||| 34e6ccd
-conf_data.set_quoted('LDAP_CONFIG_FILE', '/etc/nslcd.conf',
-                      description : 'Path of LDAP configuration file.')
-=======
-conf_data.set_quoted(
-    'LDAP_CONFIG_FILE',
-    '/etc/nslcd.conf',
-    description: 'Path of LDAP configuration file.',
-)
->>>>>>> origin/master
 
-<<<<<<< HEAD
 conf_data.set_quoted(
     'LDAP_CONF_PERSIST_PATH',
     '/var/lib/phosphor-ldap-conf',
     description: 'path of directory having persisted LDAP configuration enabled property.',
 )
-||||||| 34e6ccd
-conf_data.set_quoted('TLS_CACERT_PATH', '/etc/ssl/certs/authority',
-                      description : 'Path of LDAP server CA certificate.')
-=======
-conf_data.set_quoted(
-    'TLS_CACERT_PATH',
-    '/etc/ssl/certs/authority',
-    description: 'Path of LDAP server CA certificate.',
-)
->>>>>>> origin/master
 
-<<<<<<< HEAD
 conf_data.set(
     'MIN_PASSWORD_LENGTH',
     get_option('MIN_PASSWORD_LENGTH'),
     description: 'Minimum password length',
 )
-||||||| 34e6ccd
-conf_data.set_quoted('TLS_CERT_FILE', '/etc/nslcd/certs/cert.pem',
-                      description : 'Path of LDAP client certificate.')
-=======
 conf_data.set_quoted(
     'TLS_CERT_FILE',
     '/etc/nslcd/certs/cert.pem',
     description: 'Path of LDAP client certificate.',
 )
->>>>>>> origin/master
 
-<<<<<<< HEAD
-conf_data.set(
-    'MIN_PASSWORD_LENGTH',
-    get_option('MIN_PASSWORD_LENGTH'),
-    description: 'Minimum password length',
-)
-||||||| 34e6ccd
-conf_data.set_quoted('LDAP_CONFIG_ROOT', '/xyz/openbmc_project/user/ldap',
-                      description : 'LDAP configuration root.')
-=======
 conf_data.set_quoted(
     'LDAP_CONFIG_ROOT',
     '/xyz/openbmc_project/user/ldap',
     description: 'LDAP configuration root.',
 )
->>>>>>> origin/master
 
-<<<<<<< HEAD
-conf_data.set(
-    'MAX_PASSWORD_LENGTH',
-    get_option('MAX_PASSWORD_LENGTH'),
-    description: 'Maximum password length',
-)
-||||||| 34e6ccd
-conf_data.set_quoted('LDAP_CONFIG_DBUS_OBJ_PATH', '/xyz/openbmc_project/user/ldap/config',
-                      description : 'D-Bus path of LDAP config object.')
-=======
 conf_data.set_quoted(
     'LDAP_CONFIG_DBUS_OBJ_PATH',
     '/xyz/openbmc_project/user/ldap/config',
     description: 'D-Bus path of LDAP config object.',
 )
->>>>>>> origin/master
 
-<<<<<<< HEAD
 conf_data.set(
     'ACCOUNT_UNLOCK_TIMEOUT',
     get_option('ACCOUNT_UNLOCK_TIMEOUT'),
     description: 'Account unlock timeout in seconds',
 )
-||||||| 34e6ccd
-conf_data.set_quoted('LDAP_CONFIG_BUSNAME', 'xyz.openbmc_project.Ldap.Config',
-                      description : 'D-Bus busname of LDAP config service.')
-=======
-conf_data.set_quoted(
-    'LDAP_CONFIG_BUSNAME',
-    'xyz.openbmc_project.Ldap.Config',
-    description: 'D-Bus busname of LDAP config service.',
-)
->>>>>>> origin/master
 
-<<<<<<< HEAD
 conf_data.set(
     'MAX_FAILED_LOGIN_ATTEMPTS',
     get_option('MAX_FAILED_LOGIN_ATTEMPTS'),
     description: 'Maximum failed login attempts',
 )
-||||||| 34e6ccd
-conf_data.set_quoted('LDAP_CONF_PERSIST_PATH', '/var/lib/phosphor-ldap-conf',
-                      description : 'path of directory having persisted LDAP configuration enabled property.')
-=======
-conf_data.set_quoted(
-    'LDAP_CONF_PERSIST_PATH',
-    '/var/lib/phosphor-ldap-conf',
-    description: 'path of directory having persisted LDAP configuration enabled property.',
-)
->>>>>>> origin/master
 
-<<<<<<< HEAD
 conf_data.set(
     'CREATE_USER_HOME_FOLDER',
     get_option('CREATE_USER_HOME_FOLDER'),
@@ -219,6 +117,12 @@ conf_data.set(
     'SKIP_USERS_IN_PROTECTED_GROUP',
     get_option('SKIP_USERS_IN_PROTECTED_GROUP'),
     description: 'Whether to skip users in protected groups',
+)
+
+conf_data.set(
+    'MAX_PASSWORD_LENGTH',
+    get_option('MAX_PASSWORD_LENGTH'),
+    description: 'Maximum password length',
 )
 
 policy_update_adoption_type_as_string = get_option('POLICY_UPDATE_ADOPTION_TYPE')
@@ -265,18 +169,6 @@ conf_data.set(
 )
 
 conf_header = configure_file(output: 'config.h', configuration: conf_data)
-||||||| 34e6ccd
-conf_header = configure_file(output: 'config.h',
-    configuration: conf_data)
-=======
-conf_data.set(
-    'MAX_PASSWORD_LENGTH',
-    get_option('MAX_PASSWORD_LENGTH'),
-    description: 'Maximum password length',
-)
->>>>>>> origin/master
-
-conf_header = configure_file(output: 'config.h', configuration: conf_data)
 
 cpp = meson.get_compiler('cpp')
 
@@ -311,35 +203,13 @@ if not has_cereal
 endif
 user_manager_src = ['mainapp.cpp', 'user_mgr.cpp', 'users.cpp']
 
-<<<<<<< HEAD
-user_manager_src = ['mainapp.cpp', 'user_mgr.cpp', 'users.cpp']
-||||||| 34e6ccd
-user_manager_src = [
-    'mainapp.cpp',
-    'user_mgr.cpp',
-    'users.cpp'
-]
-=======
->>>>>>> origin/master
 
 user_manager_deps = [
-<<<<<<< HEAD
-    boost_dep,
-    sdbusplus_dep,
-    phosphor_logging_dep,
-    phosphor_dbus_interfaces_dep,
-||||||| 34e6ccd
-     boost_dep,
-     sdbusplus_dep,
-     phosphor_logging_dep,
-     phosphor_dbus_interfaces_dep
-=======
     nlohmann_json_dep,
     pam_dep,
     phosphor_dbus_interfaces_dep,
     phosphor_logging_dep,
     sdbusplus_dep,
->>>>>>> origin/master
 ]
 
 cpp_flags_loc = []
@@ -360,32 +230,12 @@ executable(
     'phosphor-user-manager',
     'mainapp.cpp',
     dependencies: user_manager_dep,
-<<<<<<< HEAD
     link_args: ['-lcrypt'],
-    cpp_args: [
-        '-DBOOST_ALL_NO_LIB',
-        '-DBOOST_SYSTEM_NO_DEPRECATED',
-        '-DBOOST_ERROR_CODE_HEADER_ONLY',
-    ],
-||||||| 34e6ccd
-    link_args: ['-lcrypt' ],
-    cpp_args: ['-DBOOST_ALL_NO_LIB', '-DBOOST_SYSTEM_NO_DEPRECATED', '-DBOOST_ERROR_CODE_HEADER_ONLY'],
-=======
-    link_args: ['-lcrypt'],
->>>>>>> origin/master
     install: true,
 )
 
 
-<<<<<<< HEAD
-systemd_system_unit_dir = systemd_dep.get_variable('systemdsystemunitdir')
-||||||| 34e6ccd
-systemd_system_unit_dir = systemd_dep.get_variable(
-    'systemdsystemunitdir'
-)
-=======
 systemd_system_unit_dir = systemd_dep.get_variable('systemd_system_unit_dir')
->>>>>>> origin/master
 
 install_data(
     'phosphor-nslcd-cert-config.conf',

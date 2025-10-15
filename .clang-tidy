@@ -1,25 +1,7 @@
-<<<<<<< HEAD
-Checks: '
-    -*,
-    bugprone-unchecked-optional-access,
-    readability-identifier-naming
-'
-
-WarningsAsErrors: '*'
-HeaderFilterRegex: '.*'
-||||||| 34e6ccd
-Checks: '
--*,
-readability-identifier-naming'
-
-WarningsAsErrors: '*'
-HeaderFilterRegex: '.*'
-=======
 Checks: '-*,
     bugprone-unchecked-optional-access,
     readability-identifier-naming
     '
->>>>>>> origin/master
 
 CheckOptions:
 -   key: readability-identifier-naming.ClassCase

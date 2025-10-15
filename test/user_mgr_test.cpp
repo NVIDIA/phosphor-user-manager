@@ -256,57 +256,8 @@ class UserMgrInTest : public testing::Test, public UserMgr
   public:
     UserMgrInTest() : UserMgr(busInTest, objectRootInTest)
     {
-<<<<<<< HEAD
         setPolicyAdoptionType(policyAdoptionTypeDefault);
         initialize();
-
-        tempFaillockConfigFile = "/tmp/test-data-XXXXXX";
-        int fd = mkstemp(tempFaillockConfigFile.data());
-        if (fd < 0)
-        {
-            throw std::runtime_error(
-                "Failed to create temporary faillock config file");
-        }
-        close(fd);
-        EXPECT_NO_THROW(
-            dumpStringToFile(rawFailLockConfig, tempFaillockConfigFile));
-
-        tempPWHistoryConfigFile = "/tmp/test-data-XXXXXX";
-        fd = mkstemp(tempPWHistoryConfigFile.data());
-        if (fd < 0)
-        {
-            throw std::runtime_error(
-                "Failed to create temporary password history config file");
-        }
-        close(fd);
-        EXPECT_NO_THROW(
-            dumpStringToFile(rawPWHistoryConfig, tempPWHistoryConfigFile));
-
-        tempPWQualityConfigFile = "/tmp/test-data-XXXXXX";
-        fd = mkstemp(tempPWQualityConfigFile.data());
-        if (fd < 0)
-        {
-            throw std::runtime_error(
-                "Failed to create temporary password quality config file");
-        }
-        close(fd);
-        EXPECT_NO_THROW(
-            dumpStringToFile(rawPWQualityConfig, tempPWQualityConfigFile));
-
-||||||| 34e6ccd
-        tempFaillockConfigFile = "/tmp/test-data-XXXXXX";
-        mktemp(tempFaillockConfigFile.data());
-        EXPECT_NO_THROW(
-            dumpStringToFile(rawFailLockConfig, tempFaillockConfigFile));
-        tempPWHistoryConfigFile = "/tmp/test-data-XXXXXX";
-        mktemp(tempPWHistoryConfigFile.data());
-        EXPECT_NO_THROW(
-            dumpStringToFile(rawPWHistoryConfig, tempPWHistoryConfigFile));
-        tempPWQualityConfigFile = "/tmp/test-data-XXXXXX";
-        mktemp(tempPWQualityConfigFile.data());
-        EXPECT_NO_THROW(
-            dumpStringToFile(rawPWQualityConfig, tempPWQualityConfigFile));
-=======
         {
             tempFaillockConfigFile = tempFilePath;
             int fd = mkstemp(tempFaillockConfigFile.data());
@@ -343,7 +294,6 @@ class UserMgrInTest : public testing::Test, public UserMgr
             }
         }
 
->>>>>>> origin/master
         // Set config files to test files
         faillockConfigFile = tempFaillockConfigFile;
         pwHistoryConfigFile = tempPWHistoryConfigFile;
@@ -1195,7 +1145,7 @@ TEST_F(
         checkAndThrowForDisallowedGroupCreation("openbmc_rfp_?owerService"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
-        checkAndThrowForDisallowedGroupCreation("openbmc_rfp_!owerService"),
+        checkAndThrowForDisallowedGroupCreation("openbmc_rfp_-owerService"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 }
 

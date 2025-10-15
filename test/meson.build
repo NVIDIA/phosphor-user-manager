@@ -40,31 +40,10 @@ endif
 test(
     'user_mgr_test',
     executable(
-<<<<<<< HEAD
-        'ldap_config_test',
-        ['ldap_config_test.cpp', 'utils_test.cpp'],
-||||||| 34e6ccd
-        'ldap_config_test',
-        ['ldap_config_test.cpp',
-         'utils_test.cpp'],
-=======
         'user_mgr_test',
         'user_mgr_test.cpp',
->>>>>>> origin/master
         include_directories: '..',
-<<<<<<< HEAD
-        dependencies: [gtest_dep, gmock_dep, phosphor_ldap_conf_dep],
-        link_args: ['-lldap'],
-||||||| 34e6ccd
-        dependencies: [
-            gtest_dep,
-            gmock_dep,
-            phosphor_ldap_conf_dep,
-        ],
-        link_args: ['-lldap'],
-=======
         dependencies: [gtest_dep, gmock_dep, user_manager_dep],
->>>>>>> origin/master
     ),
 )
 
@@ -85,27 +64,18 @@ test(
         'execute_cmd_test',
         'execute_cmd_test.cpp',
         include_directories: '..',
-<<<<<<< HEAD
         dependencies: [gtest_dep, gmock_dep, user_manager_dep],
     ),
 )
 
 # Dedicated tests for password policy adoption
-test(
-    'user_mgr_test_adoption',
-    executable(
-        'user_mgr_test_adoption',
-        'user_mgr_test_adoption.cpp',
-        include_directories: '..',
-        dependencies: [gtest_dep, gmock_dep, user_manager_dep],
-||||||| 34e6ccd
-        dependencies: [
-            gtest_dep,
-            gmock_dep,
-            user_manager_dep,
-        ],
-=======
-        dependencies: [gtest_dep, gmock_dep, phosphor_logging_dep],
->>>>>>> origin/master
-    ),
-)
+#test(
+#    'user_mgr_test_adoption',
+#    executable(
+#        'user_mgr_test_adoption',
+#        'user_mgr_test_adoption.cpp',
+#        include_directories: '..',
+#        dependencies: [gtest_dep, gmock_dep, user_manager_dep],
+#       dependencies: [gtest_dep, gmock_dep, phosphor_logging_dep],
+#   ),
+#)
