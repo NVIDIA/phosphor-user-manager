@@ -74,16 +74,32 @@ Users::Users(sdbusplus::bus_t& bus, const char* path,
     Interfaces(bus, path, Interfaces::action::defer_emit),
     userName(sdbusplus::message::object_path(path).filename()), manager(parent)
 {
-    UsersIface::userPrivilege(priv, true);
-    UsersIface::userGroups(groups, true);
+    UsersIface::userPrivilege(std::move(priv), true);
+    UsersIface::userGroups(std::move(groups), true);
     UsersIface::userEnabled(enabled, true);
     load(manager.getSerializer());
     this->emit_object_added();
 }
+
+/** @brief Destructs Users object.
+ *
+ *  Removes the user from the serializer to clean up persistent storage.
+ */
 Users::~Users()
 {
-    manager.getSerializer().erase(userName);
+    try
+    {
+        manager.getSerializer().erase(userName);
+    }
+    catch (const std::exception& e)
+    {
+        // CID 7570464: Catch exceptions to prevent terminate() call from
+        // destructor (destructors are implicitly noexcept)
+        lg2::error("Failed to erase user {USER} from serializer: {ERROR}",
+                   "USER", userName, "ERROR", e);
+    }
 }
+
 /** @brief delete user method.
  *  This method deletes the user as requested
  *
