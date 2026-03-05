@@ -20,6 +20,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef ENABLE_SSH_PREFERRED_AUTHENTICATION
+#include <com/nvidia/User/AccountPolicy/server.hpp>
+#endif
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
 #include <phosphor-logging/lg2.hpp>
@@ -66,14 +69,25 @@ using UserSSHLists =
 using AccountPolicyIface =
     sdbusplus::xyz::openbmc_project::User::server::AccountPolicy;
 
+#ifdef ENABLE_SSH_PREFERRED_AUTHENTICATION
+using NvidiaAccountPolicyIface =
+    sdbusplus::com::nvidia::User::server::AccountPolicy;
+#endif
+
 using MultiFactorAuthConfigurationIface =
     sdbusplus::xyz::openbmc_project::User::server::MultiFactorAuthConfiguration;
 
 using TOTPStateIface = sdbusplus::xyz::openbmc_project::User::server::TOTPState;
 
+#ifdef ENABLE_SSH_PREFERRED_AUTHENTICATION
+using Ifaces = sdbusplus::server::object_t<
+    UserMgrIface, AccountPolicyIface, NvidiaAccountPolicyIface,
+    MultiFactorAuthConfigurationIface, TOTPStateIface>;
+#else
 using Ifaces = sdbusplus::server::object_t<UserMgrIface, AccountPolicyIface,
                                            MultiFactorAuthConfigurationIface,
                                            TOTPStateIface>;
+#endif
 
 using Privilege = std::string;
 using GroupList = std::vector<std::string>;
@@ -332,6 +346,11 @@ class UserMgr : public Ifaces
      *  @return - number of allowed attempt
      */
     uint16_t maxLoginAttemptBeforeLockout(uint16_t val) override;
+
+#ifdef ENABLE_SSH_PREFERRED_AUTHENTICATION
+    std::vector<AuthenticationMethod> sshPreferredAuthentication(
+        std::vector<AuthenticationMethod> value) override;
+#endif
 
     /** @brief update timeout to unlock the account
      *
@@ -783,6 +802,12 @@ class UserMgr : public Ifaces
      *
      */
     void initUserObjects(void);
+
+#ifdef ENABLE_SSH_PREFERRED_AUTHENTICATION
+    /** @brief initialize SSH preferred authentication from dropbear config
+     */
+    void initializeSshPreferredAuthentication();
+#endif
 
     /** @brief get service name
      *  method to get dbus service name

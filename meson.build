@@ -17,6 +17,12 @@ endif
 if get_option('ipmi').allowed()
     add_project_arguments('-DENABLE_IPMI', language: 'cpp')
 endif
+if get_option('ssh-preferred-authentication').allowed()
+    add_project_arguments(
+        '-DENABLE_SSH_PREFERRED_AUTHENTICATION',
+        language: 'cpp',
+    )
+endif
 conf_data = configuration_data()
 
 conf_data.set(
@@ -216,7 +222,7 @@ cpp_flags_loc = []
 
 user_manager_lib = static_library(
     'phosphor-user-manager',
-    ['user_mgr.cpp', 'users.cpp'],
+    ['user_mgr.cpp', 'nvidia_user_mgr.cpp', 'users.cpp'],
     dependencies: user_manager_deps,
     cpp_args: cpp_flags_loc,
 )

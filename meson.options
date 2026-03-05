@@ -80,6 +80,13 @@ option(
 option('ldap', type: 'feature', description: 'Enable LDAP support')
 
 option(
+    'ssh-preferred-authentication',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Enable interface and property to set preferred SSH authentication methods',
+)
+
+option(
     'root_user_mgmt',
     type: 'feature',
     description: 'Enable management of the root user',

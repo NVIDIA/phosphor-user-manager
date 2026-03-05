@@ -1676,6 +1676,10 @@ void UserMgr::initializeAccountPolicy()
         }
         AccountPolicyIface::accountUnlockTimeout(value32);
     }
+
+#ifdef ENABLE_SSH_PREFERRED_AUTHENTICATION
+    initializeSshPreferredAuthentication();
+#endif
 }
 
 void UserMgr::initUserObjects(void)
