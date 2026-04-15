@@ -65,5 +65,24 @@ bool isValidLDAPURI(const std::string& uri, const char* scheme)
     return true;
 }
 
+bool containsNewline(std::string_view value)
+{
+    return value.find('\n') != std::string_view::npos ||
+           value.find('\r') != std::string_view::npos;
+}
+
+std::string_view firstFieldWithNewline(
+    std::initializer_list<std::pair<std::string_view, std::string_view>> fields)
+{
+    for (const auto& [name, value] : fields)
+    {
+        if (containsNewline(value))
+        {
+            return name;
+        }
+    }
+    return {};
+}
+
 } // namespace ldap
 } // namespace phosphor

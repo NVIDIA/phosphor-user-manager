@@ -819,5 +819,99 @@ TEST_F(TestLDAPConfig, testPrivileges)
     eventLoop(5);
 }
 
+TEST_F(TestLDAPConfig, testNewlineRejection)
+{
+    // Verify that newline characters (\n and \r) are rejected in all five
+    // fields that are written verbatim into nslcd.conf, preventing config
+    // file injection.
+    auto configFilePath = std::string(dir.c_str()) + "/" + ldapConfFile;
+    auto tlsCACertFilePath = std::string(dir.c_str()) + "/" + tlsCACertFile;
+    auto tlsCertFilePath = std::string(dir.c_str()) + "/" + tlsCertFile;
+    auto dbusPersistentFilePath = std::string(dir.c_str());
+
+    if (fs::exists(configFilePath))
+    {
+        fs::remove(configFilePath);
+    }
+    MockConfigMgr* managerPtr =
+        new MockConfigMgr(bus, LDAP_CONFIG_ROOT, configFilePath.c_str(),
+                          dbusPersistentFilePath.c_str(),
+                          tlsCACertFilePath.c_str(), tlsCertFilePath.c_str());
+
+    EXPECT_CALL(*managerPtr, stopService("nslcd.service")).Times(1);
+    EXPECT_CALL(*managerPtr, restartService("nslcd.service")).Times(1);
+    EXPECT_CALL(*managerPtr, restartService("nscd.service")).Times(1);
+
+    managerPtr->createConfig(
+        "ldap://9.194.251.138/", "cn=Users,dc=com", "cn=Users,dc=corp",
+        "MyLdap12", ldap_base::Create::SearchScope::sub,
+        ldap_base::Create::Type::ActiveDirectory, "uid", "gid");
+    managerPtr->getADConfigPtr()->enabled(true);
+
+    // ldapBindDN: \n must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->ldapBindDN("cn=evil\nuri attacker"),
+        InvalidArgument);
+    // ldapBindDN: \r must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->ldapBindDN("cn=evil\ruri attacker"),
+        InvalidArgument);
+    // Verify the field was not changed
+    EXPECT_EQ(managerPtr->getADConfigPtr()->ldapBindDN(), "cn=Users,dc=com");
+
+    // ldapBaseDN: \n must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->ldapBaseDN("dc=corp\nuri attacker"),
+        InvalidArgument);
+    // ldapBaseDN: \r must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->ldapBaseDN("dc=corp\ruri attacker"),
+        InvalidArgument);
+    EXPECT_EQ(managerPtr->getADConfigPtr()->ldapBaseDN(), "cn=Users,dc=corp");
+
+    // ldapBindDNPassword: \n must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->ldapBindDNPassword("pw\nuri attacker"),
+        InvalidArgument);
+    // ldapBindDNPassword: \r must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->ldapBindDNPassword("pw\ruri attacker"),
+        InvalidArgument);
+    EXPECT_EQ(managerPtr->configBindPassword(), "MyLdap12");
+
+    // userNameAttribute: \n must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->userNameAttribute("uid\nuri attacker"),
+        InvalidArgument);
+    // userNameAttribute: \r must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->userNameAttribute("uid\ruri attacker"),
+        InvalidArgument);
+    EXPECT_EQ(managerPtr->getADConfigPtr()->userNameAttribute(), "uid");
+
+    // groupNameAttribute: \n must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->groupNameAttribute("gid\nuri attacker"),
+        InvalidArgument);
+    // groupNameAttribute: \r must be rejected
+    EXPECT_THROW(
+        managerPtr->getADConfigPtr()->groupNameAttribute("gid\ruri attacker"),
+        InvalidArgument);
+    EXPECT_EQ(managerPtr->getADConfigPtr()->groupNameAttribute(), "gid");
+
+    // ldapServerURI: \n must be rejected
+    EXPECT_THROW(managerPtr->getADConfigPtr()->ldapServerURI(
+                     "ldap://9.194.251.138/\nuri attacker"),
+                 InvalidArgument);
+    // ldapServerURI: \r must be rejected
+    EXPECT_THROW(managerPtr->getADConfigPtr()->ldapServerURI(
+                     "ldap://9.194.251.138/\ruri attacker"),
+                 InvalidArgument);
+    EXPECT_EQ(managerPtr->getADConfigPtr()->ldapServerURI(),
+              "ldap://9.194.251.138/");
+
+    delete managerPtr;
+}
+
 } // namespace ldap
 } // namespace phosphor

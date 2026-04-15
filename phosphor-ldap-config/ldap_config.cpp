@@ -59,9 +59,8 @@ Config::Config(
     ConfigIface::Type ldapType, bool ldapServiceEnabled,
     std::string userNameAttr, std::string groupNameAttr, ConfigMgr& parent) :
     Ifaces(bus, path, Ifaces::action::defer_emit), secureLDAP(secureLDAP),
-    ldapBindPassword(std::move(ldapBindDNPassword)), tlsCacertFile(caCertFile),
-    tlsCertFile(certFile), configFilePath(filePath), objectPath(path), bus(bus),
-    parent(parent),
+    tlsCacertFile(caCertFile), tlsCertFile(certFile), configFilePath(filePath),
+    objectPath(path), bus(bus), parent(parent),
     certificateInstalledSignal(
         bus, sdbusplus::bus::match::rules::interfacesAdded(certRootPath),
         std::bind(std::mem_fn(&Config::certificateInstalled), this,
@@ -78,6 +77,22 @@ Config::Config(
         std::bind(std::mem_fn(&Config::certificateChanged), this,
                   std::placeholders::_1))
 {
+    if (auto bad = firstFieldWithNewline(
+            {{"ldapServerURI", ldapServerURI},
+             {"ldapBindDN", ldapBindDN},
+             {"ldapBaseDN", ldapBaseDN},
+             {"ldapBindDNPassword", ldapBindDNPassword},
+             {"userNameAttribute", userNameAttr},
+             {"groupNameAttribute", groupNameAttr}});
+        !bad.empty())
+    {
+        lg2::error("Constructor: {FIELD} contains newline character", "FIELD",
+                   bad.data());
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME(bad.data()),
+            Argument::ARGUMENT_VALUE("value contains newline"));
+    }
+    ldapBindPassword = std::move(ldapBindDNPassword);
     ConfigIface::ldapServerURI(ldapServerURI);
     ConfigIface::ldapBindDN(ldapBindDN);
     ConfigIface::ldapBaseDN(ldapBaseDN);
@@ -329,6 +344,13 @@ void Config::writeConfig()
 
 std::string Config::ldapBindDNPassword(std::string value)
 {
+    if (containsNewline(value))
+    {
+        lg2::error("ldapBindDNPassword contains newline character");
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME("ldapBindDNPassword"),
+            Argument::ARGUMENT_VALUE("value contains newline"));
+    }
     // Don't update the D-bus object, this is just to
     // facilitate if user wants to change the bind dn password
     // once d-bus object gets created.
@@ -369,6 +391,13 @@ std::string Config::ldapServerURI(std::string value)
         if (value == ldapServerURI())
         {
             return value;
+        }
+        if (containsNewline(value))
+        {
+            lg2::error("ldapServerURI contains newline character");
+            elog<InvalidArgument>(
+                Argument::ARGUMENT_NAME("ldapServerURI"),
+                Argument::ARGUMENT_VALUE("value contains newline"));
         }
         if (isValidLDAPURI(value, ldapsScheme))
         {
@@ -444,6 +473,14 @@ std::string Config::ldapBindDN(std::string value)
                                   Argument::ARGUMENT_VALUE(value.c_str()));
         }
 
+        if (containsNewline(value))
+        {
+            lg2::error("ldapBindDN contains newline character");
+            elog<InvalidArgument>(
+                Argument::ARGUMENT_NAME("ldapBindDN"),
+                Argument::ARGUMENT_VALUE("value contains newline"));
+        }
+
         val = ConfigIface::ldapBindDN(value);
         if (enabled())
         {
@@ -491,6 +528,14 @@ std::string Config::ldapBaseDN(std::string value)
                        value);
             elog<InvalidArgument>(Argument::ARGUMENT_NAME("ldapBaseDN"),
                                   Argument::ARGUMENT_VALUE(value.c_str()));
+        }
+
+        if (containsNewline(value))
+        {
+            lg2::error("ldapBaseDN contains newline character");
+            elog<InvalidArgument>(
+                Argument::ARGUMENT_NAME("ldapBaseDN"),
+                Argument::ARGUMENT_VALUE("value contains newline"));
         }
 
         val = ConfigIface::ldapBaseDN(value);
@@ -617,6 +662,14 @@ std::string Config::userNameAttribute(std::string value)
             return value;
         }
 
+        if (containsNewline(value))
+        {
+            lg2::error("userNameAttribute contains newline character");
+            elog<InvalidArgument>(
+                Argument::ARGUMENT_NAME("userNameAttribute"),
+                Argument::ARGUMENT_VALUE("value contains newline"));
+        }
+
         val = ConfigIface::userNameAttribute(value);
         if (enabled())
         {
@@ -634,6 +687,10 @@ std::string Config::userNameAttribute(std::string value)
                   messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
+    {
+        throw;
+    }
+    catch (const InvalidArgument& e)
     {
         throw;
     }
@@ -655,6 +712,14 @@ std::string Config::groupNameAttribute(std::string value)
             return value;
         }
 
+        if (containsNewline(value))
+        {
+            lg2::error("groupNameAttribute contains newline character");
+            elog<InvalidArgument>(
+                Argument::ARGUMENT_NAME("groupNameAttribute"),
+                Argument::ARGUMENT_VALUE("value contains newline"));
+        }
+
         val = ConfigIface::groupNameAttribute(value);
         if (enabled())
         {
@@ -672,6 +737,10 @@ std::string Config::groupNameAttribute(std::string value)
                   messageArgs, objectPath);
     }
     catch (const InternalFailure& e)
+    {
+        throw;
+    }
+    catch (const InvalidArgument& e)
     {
         throw;
     }
@@ -704,28 +773,42 @@ void Config::load(Archive& archive, const std::uint32_t /*version*/)
     archive(bVal);
     EnableIface::enabled(bVal);
 
-    std::string str;
-    archive(str);
-    ConfigIface::ldapServerURI(str);
-
-    archive(str);
-    ConfigIface::ldapBindDN(str);
-
-    archive(str);
-    ConfigIface::ldapBaseDN(str);
+    // Read all fields that require newline validation before applying any.
+    std::string serverURI, bindDN, baseDN, bindPassword, userName, groupName;
+    archive(serverURI);
+    archive(bindDN);
+    archive(baseDN);
 
     ConfigIface::SearchScope scope;
     archive(scope);
     ConfigIface::ldapSearchScope(scope);
 
-    archive(str);
-    ldapBindPassword = str;
+    archive(bindPassword);
+    archive(userName);
+    archive(groupName);
 
-    archive(str);
-    ConfigIface::userNameAttribute(str);
+    if (auto bad = firstFieldWithNewline(
+            {{"ldapServerURI", serverURI},
+             {"ldapBindDN", bindDN},
+             {"ldapBaseDN", baseDN},
+             {"ldapBindDNPassword", bindPassword},
+             {"userNameAttribute", userName},
+             {"groupNameAttribute", groupName}});
+        !bad.empty())
+    {
+        lg2::error("Deserialized {FIELD} contains newline character", "FIELD",
+                   bad.data());
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME(bad.data()),
+            Argument::ARGUMENT_VALUE("value contains newline"));
+    }
 
-    archive(str);
-    ConfigIface::groupNameAttribute(str);
+    ConfigIface::ldapServerURI(serverURI);
+    ConfigIface::ldapBindDN(bindDN);
+    ConfigIface::ldapBaseDN(baseDN);
+    ldapBindPassword = std::move(bindPassword);
+    ConfigIface::userNameAttribute(userName);
+    ConfigIface::groupNameAttribute(groupName);
 }
 
 void Config::serialize()
