@@ -342,7 +342,8 @@ std::string Config::ldapBindDNPassword(std::string value)
         }
         serialize();
         // Send event.
-        std::vector<std::string> messageArgs = {"LDAPBindDNPassword", value};
+        std::vector<std::string> messageArgs = {"LDAPBindDNPassword",
+                                                "********"};
         sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
                   sdbusplus::xyz::openbmc_project::Logging::server::Entry::
                       Level::Informational,
