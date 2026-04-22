@@ -30,7 +30,7 @@ using MapperIface =
 
 using Ifaces =
     sdbusplus::server::object_t<ConfigIface, EnableIface, MapperIface>;
-using ObjectPath = sdbusplus::message::object_path;
+using ObjectPath = sdbusplus::object_path;
 
 namespace sdbus_rule = sdbusplus::bus::match::rules;
 
@@ -255,7 +255,7 @@ class Config : public Ifaces
 
     /** @brief Create a new LDAP config file.
      */
-    void writeConfig();
+    virtual void writeConfig();
 
     /** @brief reference to config manager object */
     ConfigMgr& parent;

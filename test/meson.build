@@ -35,6 +35,38 @@ if ldap_dep.found()
             link_args: ['-lldap'],
         ),
     )
+
+    test(
+        'ldap_mapper_entry_test',
+        executable(
+            'ldap_mapper_entry_test',
+            'ldap_mapper_entry_test.cpp',
+            include_directories: '..',
+            dependencies: [
+                gmock_dep,
+                gtest_dep,
+                ldap_dep,
+                phosphor_ldap_conf_dep,
+            ],
+            link_args: ['-lldap'],
+        ),
+    )
+
+    test(
+        'ldap_mapper_serialize_test',
+        executable(
+            'ldap_mapper_serialize_test',
+            'ldap_mapper_serialize_test.cpp',
+            include_directories: '..',
+            dependencies: [
+                gmock_dep,
+                gtest_dep,
+                ldap_dep,
+                phosphor_ldap_conf_dep,
+            ],
+            link_args: ['-lldap'],
+        ),
+    )
 endif
 
 test(
