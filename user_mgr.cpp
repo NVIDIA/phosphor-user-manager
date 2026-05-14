@@ -327,7 +327,12 @@ void UserMgr::throwForDeleteUserInServiceGroup(const std::string& userName)
 
 void UserMgr::throwForUserExists(const std::string& userName)
 {
-    if (isUserExist(userName))
+    // A collision is the same kind of error whether the existing
+    // account is one we created (usersList) or a Linux system account
+    // already present in /etc/passwd (daemon, bin, nobody, ...). Map
+    // both to UserNameExists so callers surface HTTP 409 Conflict /
+    // ResourceAlreadyExists instead of InternalFailure / HTTP 500.
+    if (isUserExist(userName) || isUserExistSystem(userName))
     {
         lg2::error("User '{USERNAME}' already exists", "USERNAME", userName);
         elog<UserNameExists>();
@@ -530,13 +535,19 @@ void UserMgr::createUser(std::string userName,
         }
         groups += priv;
     }
+    // Snapshot whether the username already exists on the system before
+    // executeUserAdd runs. Combined with the same check after a failure,
+    // this guarantees we only delete users that *this* call created, never
+    // a pre-existing Linux account (defends against TOCTOU between the
+    // pre-check in throwForUserExists and useradd).
+    const bool preExistingSystemUser = isUserExistSystem(userName);
     try
     {
         executeUserAdd(userName.c_str(), groups.c_str(), sshRequested, enabled);
     }
     catch (const InternalFailure& e)
     {
-        if (isUserExistSystem(userName))
+        if (!preExistingSystemUser && isUserExistSystem(userName))
         {
             lg2::warning(
                 "User created despite error, attempting to delete user",
