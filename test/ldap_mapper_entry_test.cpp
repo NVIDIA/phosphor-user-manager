@@ -71,6 +71,21 @@ class TestLDAPMapperEntry : public testing::Test
         fs.close();
     }
 
+    void eventLoop(uint8_t numberOfTimes)
+    {
+        if (numberOfTimes == 0 || numberOfTimes > 15)
+        {
+            return;
+        }
+
+        for (int i = 0; i < numberOfTimes; i++)
+        {
+            bus.process_discard();
+            // wait for 1 seconds
+            bus.wait(1 * 1000000);
+        }
+    }
+
     void TearDown() override
     {
         fs::remove_all(dir);
@@ -140,6 +155,8 @@ TEST_F(TestLDAPMapperEntry, testMapperEntryGroupNameUpdate)
 
     entry->groupName(newGroupName);
     EXPECT_EQ(entry->groupName(), newGroupName);
+
+    eventLoop(4);
 }
 
 TEST_F(TestLDAPMapperEntry, testMapperEntryPrivilegeUpdate)
@@ -173,6 +190,8 @@ TEST_F(TestLDAPMapperEntry, testMapperEntryPrivilegeUpdate)
 
     entry->privilege("priv-user");
     EXPECT_EQ(entry->privilege(), "priv-user");
+
+    eventLoop(5);
 }
 
 TEST_F(TestLDAPMapperEntry, testMapperEntryInvalidPrivilege)

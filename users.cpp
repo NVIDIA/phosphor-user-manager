@@ -50,10 +50,12 @@ using InvalidArgument =
     sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument;
 using NoResource =
     sdbusplus::xyz::openbmc_project::User::Common::Error::NoResource;
+using NotAllowed = sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
 using UnsupportedRequest =
     sdbusplus::xyz::openbmc_project::Common::Error::UnsupportedRequest;
 
 using Argument = xyz::openbmc_project::Common::InvalidArgument;
+using Reason = xyz::openbmc_project::Common::NotAllowed::REASON;
 static constexpr auto authAppPath = "/usr/bin/google-authenticator";
 static constexpr auto secretKeyPath = "/home/{}/.google_authenticator";
 static constexpr auto secretKeyTempPath =
@@ -121,6 +123,18 @@ std::string Users::userPrivilege(std::string value)
     if (value == UsersIface::userPrivilege())
     {
         return value;
+    }
+
+    passwd pwd;
+    passwd* result = nullptr;
+    char buf[4096];
+    if (getpwnam_r(userName.c_str(), &pwd, buf, sizeof(buf), &result) == 0 &&
+        result != nullptr && pwd.pw_uid == 0)
+    {
+        lg2::error("Privilege change not allowed for '{USERNAME}'", "USERNAME",
+                   userName);
+        elog<NotAllowed>(
+            Reason("root privilege user must retain administrator privilege"));
     }
     manager.updateGroupsAndPriv(userName, UsersIface::userGroups(), value);
     std::string ret = UsersIface::userPrivilege(value);

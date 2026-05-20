@@ -910,6 +910,7 @@ TEST_F(TestLDAPConfig, testNewlineRejection)
     EXPECT_EQ(managerPtr->getADConfigPtr()->ldapServerURI(),
               "ldap://9.194.251.138/");
 
+    eventLoop(2);
     delete managerPtr;
 }
 

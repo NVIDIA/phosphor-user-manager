@@ -1044,8 +1044,13 @@ TEST_F(UserMgrInTest, CreateUserThrowsInternalFailureWhenExecuteUserAddFails)
     EXPECT_CALL(*this, executeUserAdd)
         .WillOnce(testing::Throw(
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()));
+    // createUser invokes isUserExistSystem three times: once via
+    // throwForUserExists, once for the pre-useradd TOCTOU snapshot, and once
+    // in the InternalFailure catch block. All three must report "absent" so
+    // the failure path falls through to elog<InternalFailure>().
     EXPECT_CALL(*this, isUserExistSystem(testing::StrEq(username)))
-        .WillOnce(Return(false));
+        .Times(3)
+        .WillRepeatedly(Return(false));
     EXPECT_THROW(
         createUser(username, {"redfish"}, "", true),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
@@ -1059,7 +1064,13 @@ TEST_F(UserMgrInTest,
     EXPECT_CALL(*this, executeUserAdd)
         .WillOnce(testing::Throw(
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()));
+    // throwForUserExists and the pre-useradd snapshot must both see the
+    // user as absent (otherwise we'd return UserNameExists, or skip the
+    // delete via !preExistingSystemUser). Only the post-failure check sees
+    // it as present, simulating a useradd that partially created the user.
     EXPECT_CALL(*this, isUserExistSystem(testing::StrEq(username)))
+        .WillOnce(Return(false))
+        .WillOnce(Return(false))
         .WillOnce(Return(true));
     EXPECT_CALL(*this, executeUserDelete(testing::StrEq(username)))
         .WillOnce(testing::DoDefault());
@@ -1194,8 +1205,12 @@ TEST_F(UserMgrInTest, RenameUserThrowsInternalFailureIfExecuteUserModifyFails)
                                          testing::StrEq(newUsername)))
         .WillOnce(testing::Throw(
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()));
+    // renameUser invokes isUserExistSystem twice: once via
+    // throwForUserExists on the new name, and once in the InternalFailure
+    // catch block. Both must report absent so we elog<InternalFailure>().
     EXPECT_CALL(*this, isUserExistSystem(testing::StrEq(newUsername)))
-        .WillOnce(Return(false));
+        .Times(2)
+        .WillRepeatedly(Return(false));
     EXPECT_THROW(
         UserMgr::renameUser(username, newUsername),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
@@ -1222,7 +1237,12 @@ TEST_F(UserMgrInTest,
                                          testing::StrEq(newUsername)))
         .WillOnce(testing::Throw(
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()));
+    // throwForUserExists must see the new name as absent (otherwise we'd
+    // return UserNameExists). The post-failure check sees it as present,
+    // simulating usermod that partially renamed before failing — which
+    // sets err and triggers elog<InternalFailure>() at end of renameUser.
     EXPECT_CALL(*this, isUserExistSystem(testing::StrEq(newUsername)))
+        .WillOnce(Return(false))
         .WillOnce(Return(true));
     EXPECT_THROW(
         UserMgr::renameUser(username, newUsername),
@@ -1786,6 +1806,7 @@ TEST_F(UserMgrInTest, CreateUser2)
               info.passwordExpiration);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+    eventLoop(3);
 }
 
 TEST_F(UserMgrInTest, CreateUser2WithoutPasswordExpiration)
@@ -1811,6 +1832,7 @@ TEST_F(UserMgrInTest, CreateUser2WithoutPasswordExpiration)
               getDefaultPasswordExpiration());
 
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+    eventLoop(3);
 }
 
 TEST_F(UserMgrInTest, CreateUser2PasswordExpirationNotSet)
@@ -1848,6 +1870,7 @@ TEST_F(UserMgrInTest, CreateUser2PasswordExpirationNotSet)
               passwordExpiration);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+    eventLoop(3);
 }
 
 TEST_F(UserMgrInTest, CreateUser2UnexpiringPassword)
@@ -1898,6 +1921,7 @@ TEST_F(UserMgrInTest, CreateUser2UnexpiringPassword)
               passwordExpiration);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+    eventLoop(3);
 }
 
 TEST_F(UserMgrInTest, CreateUser2Rename)
@@ -1941,6 +1965,7 @@ TEST_F(UserMgrInTest, CreateUser2Rename)
               info.passwordExpiration);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(newUserName));
+    eventLoop(4);
 }
 
 TEST_F(UserMgrInTest, CreateUser2PasswordExpirationFail)
@@ -1975,6 +2000,7 @@ TEST_F(UserMgrInTest, CreateUser2PasswordExpirationFail)
     EXPECT_THROW(getUserInfo(userName),
                  sdbusplus::xyz::openbmc_project::User::Common::Error::
                      UserNameDoesNotExist);
+    eventLoop(3);
 }
 
 } // namespace user
