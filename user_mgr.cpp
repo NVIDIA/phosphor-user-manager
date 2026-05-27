@@ -130,12 +130,13 @@ constexpr auto mfaConfPath = "/var/lib/usr_mgr.conf";
 
 #ifdef ENABLE_IPMI
 // The hardcoded groups in OpenBMC projects
-constexpr std::array<const char*, 6> predefinedGroups = {
-    "redfish", "ipmi", "ssh", "service", "redfish-hostiface", "hostconsole"};
+constexpr std::array<const char*, 7> predefinedGroups = {
+    "redfish",           "ipmi",       "ssh", "service", "kvm-ip",
+    "redfish-hostiface", "hostconsole"};
 #else
 // The hardcoded groups in OpenBMC projects
-constexpr std::array<const char*, 5> predefinedGroups = {
-    "redfish", "ssh", "service", "redfish-hostiface", "hostconsole"};
+constexpr std::array<const char*, 6> predefinedGroups = {
+    "redfish", "ssh", "service", "kvm-ip", "redfish-hostiface", "hostconsole"};
 #endif
 // These prefixes are for Dynamic Redfish authorization. See
 // https://github.com/openbmc/docs/blob/master/designs/redfish-authorization.md

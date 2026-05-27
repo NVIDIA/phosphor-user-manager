@@ -1238,7 +1238,11 @@ TEST_F(
 
 TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
 {
+#ifdef ENABLE_IPMI
+    constexpr size_t predefGroupCount = 5;
+#else
     constexpr size_t predefGroupCount = 4;
+#endif
 
     EXPECT_THAT(allGroups().size(), predefGroupCount);
     // we have and additional group "redfish-hostiface" and "service" which are
@@ -1275,12 +1279,13 @@ TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
 {
 #ifdef ENABLE_IPMI
     // The groups "redfish-hostiface" and "service" are not exposed to the user
-    EXPECT_THAT(allGroups(), testing::UnorderedElementsAre(
-                                 "redfish", "ipmi", "ssh", "hostconsole"));
+    EXPECT_THAT(allGroups(),
+                testing::UnorderedElementsAre("redfish", "ipmi", "ssh",
+                                              "kvm-ip", "hostconsole"));
 #else
     // The groups "redfish-hostiface" and "service" are not exposed to the user
-    EXPECT_THAT(allGroups(),
-                testing::UnorderedElementsAre("redfish", "ssh", "hostconsole"));
+    EXPECT_THAT(allGroups(), testing::UnorderedElementsAre(
+                                 "redfish", "ssh", "kvm-ip", "hostconsole"));
 #endif
 }
 
@@ -1363,14 +1368,14 @@ TEST_F(UserMgrInTest, CheckAndThrowForGroupNotExist)
 TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
 {
 #ifdef ENABLE_IPMI
-    EXPECT_THAT(
-        UserMgr::readAllGroupsOnSystem(),
-        testing::UnorderedElementsAre("redfish", "ipmi", "ssh", "service",
-                                      "redfish-hostiface", "hostconsole"));
+    EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
+                testing::UnorderedElementsAre(
+                    "redfish", "ipmi", "ssh", "service", "kvm-ip",
+                    "redfish-hostiface", "hostconsole"));
 #else
     EXPECT_THAT(
         UserMgr::readAllGroupsOnSystem(),
-        testing::UnorderedElementsAre("redfish", "ssh", "service",
+        testing::UnorderedElementsAre("redfish", "ssh", "service", "kvm-ip",
                                       "redfish-hostiface", "hostconsole"));
 #endif
 }
