@@ -1187,8 +1187,10 @@ TEST_F(UserMgrInTest, RenameUserOnSuccess)
 
     UserInfoMap userInfo = getUserInfo(newUsername);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-user");
+    // "ssh" (ManagerConsole) is restricted to UID 0, so it is stripped for
+    // this regular user; only "redfish" remains and survives the rename.
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
-                testing::UnorderedElementsAre("redfish", "ssh"));
+                testing::UnorderedElementsAre("redfish"));
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(newUsername));
@@ -1218,8 +1220,10 @@ TEST_F(UserMgrInTest, RenameUserThrowsInternalFailureIfExecuteUserModifyFails)
     // The original user is unchanged
     UserInfoMap userInfo = getUserInfo(username);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-user");
+    // "ssh" (ManagerConsole) is restricted to UID 0, so it was stripped at
+    // create time; only "redfish" remains.
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
-                testing::UnorderedElementsAre("redfish", "ssh"));
+                testing::UnorderedElementsAre("redfish"));
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
@@ -1251,8 +1255,10 @@ TEST_F(UserMgrInTest,
     // The original user is updated
     UserInfoMap userInfo = getUserInfo(newUsername);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-user");
+    // "ssh" (ManagerConsole) is restricted to UID 0, so it was stripped at
+    // create time; only "redfish" remains.
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
-                testing::UnorderedElementsAre("redfish", "ssh"));
+                testing::UnorderedElementsAre("redfish"));
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(newUsername));
@@ -1273,20 +1279,23 @@ TEST_F(UserMgrInTest, UpdateGroupsAndPrivOnSuccess)
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+    // "ssh" (ManagerConsole) is restricted to UID 0, so it is stripped from
+    // the requested groups for this regular user; the remaining groups apply.
 #ifdef ENABLE_IPMI
     EXPECT_NO_THROW(
         updateGroupsAndPriv(username, {"ipmi", "ssh"}, "priv-admin"));
 #else
-    EXPECT_NO_THROW(updateGroupsAndPriv(username, {"ssh"}, "priv-admin"));
+    EXPECT_NO_THROW(
+        updateGroupsAndPriv(username, {"redfish", "ssh"}, "priv-admin"));
 #endif
     UserInfoMap userInfo = getUserInfo(username);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-admin");
 #ifdef ENABLE_IPMI
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
-                testing::UnorderedElementsAre("ipmi", "ssh"));
+                testing::UnorderedElementsAre("ipmi"));
 #else
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
-                testing::UnorderedElementsAre("ssh"));
+                testing::UnorderedElementsAre("redfish"));
 #endif
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
     EXPECT_NO_THROW(UserMgr::deleteUser(username));

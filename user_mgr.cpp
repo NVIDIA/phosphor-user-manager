@@ -485,6 +485,23 @@ void UserMgr::throwForInvalidGroups(const std::vector<std::string>& groupNames)
     }
 }
 
+// Nvidia code starts
+void UserMgr::filterRestrictedGroups(const std::string& userName,
+                                     std::vector<std::string>& groupNames,
+                                     const std::string& grpName)
+{
+    auto it = std::find(groupNames.begin(), groupNames.end(), grpName);
+    if (it == groupNames.end())
+    {
+        return;
+    }
+
+    lg2::info("Removing '{GROUP}' group from non-root user '{USERNAME}'",
+              "GROUP", grpName, "USERNAME", userName);
+    groupNames.erase(it);
+}
+// Nvidia code ends
+
 std::vector<std::string> UserMgr::readAllGroupsOnSystem()
 {
     std::vector<std::string> allGroups = {predefinedGroups.begin(),
@@ -523,6 +540,12 @@ void UserMgr::createUserImpl(const std::string& userName, UserCreateMap props)
 
     throwForInvalidPrivilege(priv);
     throwForInvalidGroups(groupNames);
+    throwForUidZero(userName);
+    // Nvidia code starts
+    // The "ssh" group (ManagerConsole in bmcweb) is reserved for the
+    // UID 0 user. Don't add it unless the user is UID 0.
+    filterRestrictedGroups(userName, groupNames, grpSsh);
+    // Nvidia code ends
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserExists(userName);
@@ -787,6 +810,10 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
     throwForInvalidPrivilege(priv);
     throwForInvalidGroups(groupNames);
     throwForUidZero(userName);
+    // Nvidia code starts
+    // Strip "ssh" (ManagerConsole) for any non-UID-0 user.
+    filterRestrictedGroups(userName, groupNames, grpSsh);
+    // Nvidia code ends
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);

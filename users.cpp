@@ -124,18 +124,6 @@ std::string Users::userPrivilege(std::string value)
     {
         return value;
     }
-
-    passwd pwd;
-    passwd* result = nullptr;
-    char buf[4096];
-    if (getpwnam_r(userName.c_str(), &pwd, buf, sizeof(buf), &result) == 0 &&
-        result != nullptr && pwd.pw_uid == 0)
-    {
-        lg2::error("Privilege change not allowed for '{USERNAME}'", "USERNAME",
-                   userName);
-        elog<NotAllowed>(
-            Reason("root privilege user must retain administrator privilege"));
-    }
     manager.updateGroupsAndPriv(userName, UsersIface::userGroups(), value);
     std::string ret = UsersIface::userPrivilege(value);
 
