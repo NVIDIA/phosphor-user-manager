@@ -118,6 +118,7 @@ using UserNameGroupFail =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameGroupFail;
 using NoResource =
     sdbusplus::xyz::openbmc_project::User::Common::Error::NoResource;
+using NotAllowedArgument = xyz::openbmc_project::Common::NotAllowed;
 using Argument = xyz::openbmc_project::Common::InvalidArgument;
 using GroupNameExists =
     sdbusplus::xyz::openbmc_project::User::Common::Error::GroupNameExists;
@@ -368,6 +369,16 @@ void UserMgr::throwForUserNameConstraints(
     }
 }
 
+void UserMgr::throwForUidZero(const std::string& userName)
+{
+    auto systemUser = getSystemUser(userName);
+    if (systemUser && systemUser->pwd.pw_uid == 0)
+    {
+        lg2::error("User '{USERNAME}' is UID 0", "USERNAME", userName);
+        elog<NotAllowed>(NotAllowedArgument::REASON("User is UID 0"));
+    }
+}
+
 void UserMgr::throwForMaxGrpUserCount(
     const std::vector<std::string>& groupNames)
 {
@@ -538,6 +549,7 @@ void UserMgr::deleteUser(std::string userName)
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
+    throwForUidZero(userName);
     throwForDeleteUserInServiceGroup(userName);
     if (userName == "root" ||
         isRootPrivilegeUser(userName, ROOT_PRIVILEGE_USER_LIST))
