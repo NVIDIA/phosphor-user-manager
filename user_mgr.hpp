@@ -519,6 +519,14 @@ class UserMgr : public Ifaces
     virtual bool isUserExistSystem(const std::string& userName);
     size_t getNonIpmiUsersCount();
 
+    /** @brief check user has UID 0
+     *  method to check whether user is not UID 0 (i.e. root),
+     *  and throw if it is.
+     *
+     *  @param[in] userName - name of the user
+     */
+    void throwForUidZero(const std::string& userName);
+
     /** @brief check user exists
      *  method to check whether user exist, and throw if not.
      *
