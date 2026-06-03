@@ -746,16 +746,11 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
 {
     throwForInvalidPrivilege(priv);
     throwForInvalidGroups(groupNames);
-<<<<<<< HEAD
-||||||| constructed merge base
-    throwForUidZero(userName);
-=======
     throwForUidZero(userName);
     // Nvidia code starts
     // Strip "ssh" (ManagerConsole) for any non-UID-0 user.
     filterRestrictedGroups(userName, groupNames, grpSsh);
     // Nvidia code ends
->>>>>>> user-mgr: restrict ssh group (ManagerConsole) to UID 0 users
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
