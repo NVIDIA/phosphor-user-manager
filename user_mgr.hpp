@@ -836,7 +836,7 @@ class UserMgr : public Ifaces
     JsonSerializer serializer;
     /** @brief privilege manager container */
     const std::vector<std::string> privMgr = {"priv-admin", "priv-operator",
-                                              "priv-user"};
+                                              "priv-user", "priv-noaccess"};
 
     /** @brief groups manager container */
     std::vector<std::string> groupsMgr;

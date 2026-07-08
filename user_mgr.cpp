@@ -1873,7 +1873,15 @@ void UserMgr::initUserObjects(void)
         {
             if (user == "service")
             {
-                continue;
+                // The "service" user is a pre-configured account that is
+                // skipped by default. If it holds priv-noaccess privilege,
+                // it will be populated to D-Bus.
+                const auto& naUsers = groupLists["priv-noaccess"];
+                if (std::find(naUsers.begin(), naUsers.end(), user) ==
+                    naUsers.end())
+                {
+                    continue;
+                }
             }
 #ifdef SKIP_USERS_IN_PROTECTED_GROUP
             if (std::find(protectedGroupUsers.begin(),
