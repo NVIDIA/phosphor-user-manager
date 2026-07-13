@@ -1492,6 +1492,46 @@ TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
     eventLoop(10);
 }
 
+TEST_F(UserMgrInTest, CreateUserWithHostConsoleUsesLoginShell)
+{
+    std::string username = "soluser";
+    EXPECT_CALL(*this,
+                executeUserAdd(testing::StrEq(username), testing::_,
+                               /*sshRequested=*/testing::Eq(true), testing::_))
+        .WillOnce(testing::DoDefault());
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"hostconsole"}, "priv-admin", true));
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    eventLoop(1);
+}
+
+TEST_F(UserMgrInTest, CreateUserWithoutConsoleGroupUsesNoLoginShell)
+{
+    std::string username = "webuser";
+    EXPECT_CALL(*this,
+                executeUserAdd(testing::StrEq(username), testing::_,
+                               /*sshRequested=*/testing::Eq(false), testing::_))
+        .WillOnce(testing::DoDefault());
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"redfish"}, "priv-admin", true));
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    eventLoop(1);
+}
+
+TEST_F(UserMgrInTest, UpdateGroupsAddingHostConsoleUsesLoginShell)
+{
+    std::string username = "solupd";
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"redfish"}, "priv-admin", true));
+    EXPECT_CALL(*this, executeUserModify(testing::StrEq(username), testing::_,
+                                         /*sshRequested=*/testing::Eq(true)))
+        .WillOnce(testing::DoDefault());
+    EXPECT_NO_THROW(
+        updateGroupsAndPriv(username, {"hostconsole"}, "priv-admin"));
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+    eventLoop(1);
+}
+
 TEST_F(UserMgrInTest, UserEnableThrowsInternalFailureIfExecuteUserModifyFail)
 {
     std::string username = "user001";
