@@ -62,7 +62,6 @@ static constexpr size_t ipmiMaxUserNameLen = 0;
 #endif
 static constexpr size_t systemMaxUserNameLen = 100;
 static constexpr const char* grpSsh = "ssh";
-static constexpr const char* grpHostConsole = "hostconsole";
 static constexpr int success = 0;
 static constexpr int failure = -1;
 static constexpr long secondsPerDay = 60 * 60 * 24;
@@ -281,15 +280,6 @@ bool removeStringFromCSV(std::string& csvStr, const std::string& delStr)
     }
     return false;
 }
-
-// Nvidia code starts
-// True if the groups include "hostconsole" (needs /bin/sh for SOL SSH).
-static bool isHostConsoleRequested(const std::vector<std::string>& groupNames)
-{
-    return std::find(groupNames.begin(), groupNames.end(), grpHostConsole) !=
-           groupNames.end();
-}
-// Nvidia code ends
 
 bool UserMgr::isUserExist(const std::string& userName) const
 {
@@ -564,10 +554,6 @@ void UserMgr::createUserImpl(const std::string& userName, UserCreateMap props)
 
     std::string groups = getCSVFromVector(groupNames);
     bool sshRequested = removeStringFromCSV(groups, grpSsh);
-    // Nvidia code starts
-    // HostConsole users need a login shell for SOL/host-console SSH access.
-    sshRequested = sshRequested || isHostConsoleRequested(groupNames);
-    // Nvidia code ends
 
     // treat privilege as a group - This is to avoid using different file to
     // store the same.
@@ -847,10 +833,6 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
 
     std::string groups = getCSVFromVector(groupNames);
     bool sshRequested = removeStringFromCSV(groups, grpSsh);
-    // Nvidia code starts
-    // Keep the login shell in sync when hostconsole is added/removed.
-    sshRequested = sshRequested || isHostConsoleRequested(groupNames);
-    // Nvidia code ends
 
     // treat privilege as a group - This is to avoid using different file to
     // store the same.
@@ -1857,16 +1839,6 @@ void UserMgr::initUserObjects(void)
     UserSSHLists userSSHLists = getUserAndSshGrpList();
     userNameList = std::move(userSSHLists.first);
     sshGrpUsersList = std::move(userSSHLists.second);
-
-    // Nvidia code starts
-    // Exclude hostconsole users from the ssh list; their /bin/sh is for SOL.
-    std::vector<std::string> hostConsoleUsers = getUsersInGroup(grpHostConsole);
-    std::erase_if(
-        sshGrpUsersList, [&hostConsoleUsers](const std::string& user) {
-            return std::find(hostConsoleUsers.begin(), hostConsoleUsers.end(),
-                             user) != hostConsoleUsers.end();
-        });
-    // Nvidia code ends
 
 #ifdef SKIP_USERS_IN_PROTECTED_GROUP
     const std::string protectedGroupName = "protected";
