@@ -9,8 +9,6 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 
 namespace phosphor
 {
@@ -31,11 +29,6 @@ using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 namespace fs = std::filesystem;
 using Argument = xyz::openbmc_project::Common::InvalidArgument;
 using NotAllowedArgument = xyz::openbmc_project::Common::NotAllowed;
-
-using Line = std::string;
-using Key = std::string;
-using Val = std::string;
-using ConfigInfo = std::map<Key, Val>;
 
 void ConfigMgr::startOrStopService(const std::string& service, bool start)
 {
@@ -140,7 +133,7 @@ std::string ConfigMgr::createConfig(
         openLDAPConfigPtr.reset(nullptr);
         objPath = openLDAPDbusObjectPath;
         openLDAPConfigPtr = std::make_unique<Config>(
-            bus, objPath.c_str(), configFilePath.c_str(), tlsCacertFile.c_str(),
+            bus, objPath, configFilePath, tlsCacertFile.c_str(),
             tlsCertFile.c_str(), secureLDAP, ldapServerURI, ldapBindDN,
             ldapBaseDN, std::move(ldapBindDNPassword),
             static_cast<ConfigIface::SearchScope>(ldapSearchScope),
@@ -152,7 +145,7 @@ std::string ConfigMgr::createConfig(
         ADConfigPtr.reset(nullptr);
         objPath = adDbusObjectPath;
         ADConfigPtr = std::make_unique<Config>(
-            bus, objPath.c_str(), configFilePath.c_str(), tlsCacertFile.c_str(),
+            bus, objPath, configFilePath, tlsCacertFile.c_str(),
             tlsCertFile.c_str(), secureLDAP, ldapServerURI, ldapBindDN,
             ldapBaseDN, std::move(ldapBindDNPassword),
             static_cast<ConfigIface::SearchScope>(ldapSearchScope),
@@ -168,17 +161,15 @@ void ConfigMgr::createDefaultObjects()
     if (!openLDAPConfigPtr)
     {
         openLDAPConfigPtr = std::make_unique<Config>(
-            bus, openLDAPDbusObjectPath.c_str(), configFilePath.c_str(),
-            tlsCacertFile.c_str(), tlsCertFile.c_str(),
-            ConfigIface::Type::OpenLdap, *this);
+            bus, openLDAPDbusObjectPath, configFilePath, tlsCacertFile.c_str(),
+            tlsCertFile.c_str(), ConfigIface::Type::OpenLdap, *this);
         openLDAPConfigPtr->emit_object_added();
     }
     if (!ADConfigPtr)
     {
         ADConfigPtr = std::make_unique<Config>(
-            bus, adDbusObjectPath.c_str(), configFilePath.c_str(),
-            tlsCacertFile.c_str(), tlsCertFile.c_str(),
-            ConfigIface::Type::ActiveDirectory, *this);
+            bus, adDbusObjectPath, configFilePath, tlsCacertFile.c_str(),
+            tlsCertFile.c_str(), ConfigIface::Type::ActiveDirectory, *this);
         ADConfigPtr->emit_object_added();
     }
 }
@@ -218,7 +209,7 @@ void ConfigMgr::restore()
         openLDAPConfigPtr->emit_object_added();
     }
 
-    startOrStopService(phosphor::ldap::nslcdService,
+    startOrStopService(nslcdService,
                        ADConfigPtr->enabled() || openLDAPConfigPtr->enabled());
 }
 

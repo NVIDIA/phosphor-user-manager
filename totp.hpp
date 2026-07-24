@@ -30,7 +30,7 @@ struct PasswordData
     {
         if (value.size() + 1 > PAM_MAX_MSG_SIZE)
         {
-            lg2::error("value length error{PROMPT}", "PROMPT", prompt);
+            lg2::error("value length error {PROMPT}", "PROMPT", prompt);
             return PAM_CONV_ERR;
         }
         responseData.emplace_back(prompt, std::string(value));
@@ -94,7 +94,6 @@ inline int pamFunctionConversation(int numMsg, const struct pam_message** msgs,
     PasswordData* appPass = reinterpret_cast<PasswordData*>(appdataPtr);
     auto msgCount = static_cast<size_t>(numMsg);
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
-    // auto responseArrPtr = std::make_unique<pam_response[]>(msgCount);
     auto pamResponseDeleter = [](pam_response* ptr) { free(ptr); };
 
     std::unique_ptr<pam_response[], decltype(pamResponseDeleter)> responses(
@@ -128,7 +127,8 @@ struct Totp
      * @param username The provided username aka account name.
      * @param token The provided MFA token.
      * @returns PAM error code or PAM_SUCCESS for success. */
-    static inline int verify(std::string_view username, std::string token)
+    static inline int verify(std::string_view username,
+                             const std::string& token)
     {
         std::string userStr(username);
         PasswordData data;

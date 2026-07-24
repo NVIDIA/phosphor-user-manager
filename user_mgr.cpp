@@ -36,9 +36,11 @@
 #include <phosphor-logging/redfish_event_log.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
+#include <xyz/openbmc_project/User/Manager/common.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -48,6 +50,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 namespace phosphor
 {
@@ -156,11 +159,38 @@ constexpr std::array<const char*, 4> allowedGroupPrefix = {
     "openbmc_orfp_", // OpenBMC Redfish OEM Privileges
 };
 
-struct SystemUserInfo
+// Valid user name regexes for regular and users in the ipmi group
+static constexpr const char* validUserNameRegex = "^[a-zA-Z_][a-zA-Z_0-9.]*$";
+static constexpr const char* validUserNameIpmiRegex =
+    "^[a-zA-Z_][a-zA-Z_0-9]*$";
+
+template <typename T>
+T parseUnsignedConfigValue(std::string_view valueStr)
 {
-    struct passwd pwd;
-    std::vector<char> buffer;
-};
+    static_assert(std::is_unsigned_v<T>, "T must be an unsigned integer");
+
+    if (valueStr.empty())
+    {
+        throw std::invalid_argument("empty value");
+    }
+
+    if (!std::all_of(valueStr.begin(), valueStr.end(), [](char c) {
+            return std::isdigit(static_cast<unsigned char>(c)) != 0;
+        }))
+    {
+        throw std::invalid_argument("value contains non-digit characters");
+    }
+
+    unsigned long long parsedValue =
+        std::stoull(std::string(valueStr), nullptr, 10);
+    if (parsedValue >
+        static_cast<unsigned long long>(std::numeric_limits<T>::max()))
+    {
+        throw std::out_of_range("value exceeds allowed range");
+    }
+
+    return static_cast<T>(parsedValue);
+}
 
 void checkAndThrowsForGroupChangeAllowed(const std::string& groupName)
 {
@@ -218,32 +248,39 @@ uint64_t secondsToDays(const uint64_t seconds)
     return dateDays;
 }
 
-std::unique_ptr<struct SystemUserInfo> getSystemUser(
-    const std::string& userName)
+std::optional<std::pair<size_t, size_t>> findPamArgValueRange(
+    std::string_view line, std::string_view argName)
 {
-    static auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-    if (buflen <= 0)
+    if (argName.empty())
     {
-        // Use a default size if there is no hard limit suggested by sysconf()
-        buflen = 1024;
+        return std::nullopt;
     }
 
-    auto res = std::make_unique<struct SystemUserInfo>();
-    res->buffer = std::vector<char>(buflen);
-
-    struct passwd* pwdPtr = nullptr;
-
-    auto status = getpwnam_r(userName.c_str(), &res->pwd, res->buffer.data(),
-                             res->buffer.size(), &pwdPtr);
-    // On success, getpwnam_r() returns zero, and set *pwdPtr to pwd.
-    // If no matching password record was found, these functions return 0
-    // and store NULL in *pwdPtr
-    if (!status && (&res->pwd == pwdPtr))
+    size_t searchPos = 0;
+    while ((searchPos = line.find(argName, searchPos)) != std::string::npos)
     {
-        return res;
+        const bool tokenBoundary =
+            (searchPos == 0) ||
+            std::isspace(static_cast<unsigned char>(line[searchPos - 1]));
+        const size_t equalPos = searchPos + argName.size();
+        if (!tokenBoundary || equalPos >= line.size() || line[equalPos] != '=')
+        {
+            ++searchPos;
+            continue;
+        }
+
+        size_t valueStart = equalPos + 1;
+        size_t valueEnd = valueStart;
+        while (valueEnd < line.size() &&
+               !std::isspace(static_cast<unsigned char>(line[valueEnd])))
+        {
+            ++valueEnd;
+        }
+
+        return std::make_pair(valueStart, valueEnd);
     }
 
-    return nullptr;
+    return std::nullopt;
 }
 
 } // namespace
@@ -281,6 +318,34 @@ bool removeStringFromCSV(std::string& csvStr, const std::string& delStr)
     return false;
 }
 
+std::unique_ptr<struct SystemUserInfo> UserMgr::getSystemUser(
+    const std::string& userName) const
+{
+    static auto buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (buflen <= 0)
+    {
+        // Use a default size if there is no hard limit suggested by sysconf()
+        buflen = 1024;
+    }
+
+    auto res = std::make_unique<struct SystemUserInfo>();
+    res->buffer = std::vector<char>(buflen);
+
+    struct passwd* pwdPtr = nullptr;
+
+    auto status = getpwnam_r(userName.c_str(), &res->pwd, res->buffer.data(),
+                             res->buffer.size(), &pwdPtr);
+    // On success, getpwnam_r() returns zero, and set *pwdPtr to pwd.
+    // If no matching password record was found, these functions return 0
+    // and store NULL in *pwdPtr
+    if (!status && (&res->pwd == pwdPtr))
+    {
+        return res;
+    }
+
+    return nullptr;
+}
+
 bool UserMgr::isUserExist(const std::string& userName) const
 {
     if (userName.empty())
@@ -289,11 +354,7 @@ bool UserMgr::isUserExist(const std::string& userName) const
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
                               Argument::ARGUMENT_VALUE("Null"));
     }
-    if (usersList.find(userName) == usersList.end())
-    {
-        return false;
-    }
-    return true;
+    return usersList.contains(userName);
 }
 
 bool UserMgr::isUserExistSystem(const std::string& userName)
@@ -364,8 +425,8 @@ void UserMgr::throwForUserExists(const std::string& userName)
 void UserMgr::throwForUserNameConstraints(
     const std::string& userName, const std::vector<std::string>& groupNames)
 {
-    if (std::find(groupNames.begin(), groupNames.end(), "ipmi") !=
-        groupNames.end())
+    bool isIpmiUser = std::ranges::contains(groupNames, "ipmi");
+    if (isIpmiUser)
     {
         if (userName.length() > ipmiMaxUserNameLen)
         {
@@ -387,8 +448,10 @@ void UserMgr::throwForUserNameConstraints(
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
                               Argument::ARGUMENT_VALUE("Invalid length"));
     }
-    if (!std::regex_match(userName.c_str(),
-                          std::regex("[a-zA-Z_][a-zA-Z_0-9]*")))
+    if ((!isIpmiUser &&
+         !std::regex_match(userName, std::regex(validUserNameRegex))) ||
+        (isIpmiUser &&
+         !std::regex_match(userName, std::regex(validUserNameIpmiRegex))))
     {
         lg2::error("Invalid username '{USERNAME}'", "USERNAME", userName);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
@@ -457,13 +520,11 @@ void UserMgr::throwForMaxGrpUserCount(
                     "Non-ipmi-rfhi user limit reached"));
         }
     }
-    return;
 }
 
 void UserMgr::throwForInvalidPrivilege(const std::string& priv)
 {
-    if (!priv.empty() &&
-        (std::find(privMgr.begin(), privMgr.end(), priv) == privMgr.end()))
+    if ((std::find(privMgr.begin(), privMgr.end(), priv) == privMgr.end()))
     {
         lg2::error("Invalid privilege '{PRIVILEGE}'", "PRIVILEGE", priv);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("Privilege"),
@@ -529,7 +590,7 @@ std::vector<std::string> UserMgr::readAllGroupsOnSystem()
 void UserMgr::createUserImpl(const std::string& userName, UserCreateMap props)
 {
     auto priv = std::get<std::string>(props[UserProperty::Privilege]);
-    auto enabled = std::get<bool>(props[UserProperty::Enabled]);
+    auto isEnabled = std::get<bool>(props[UserProperty::Enabled]);
     auto groupNames =
         std::get<std::vector<std::string>>(props[UserProperty::GroupNames]);
 
@@ -573,7 +634,8 @@ void UserMgr::createUserImpl(const std::string& userName, UserCreateMap props)
     const bool preExistingSystemUser = isUserExistSystem(userName);
     try
     {
-        executeUserAdd(userName.c_str(), groups.c_str(), sshRequested, enabled);
+        executeUserAdd(userName.c_str(), groups.c_str(), sshRequested,
+                       isEnabled);
     }
     catch (const InternalFailure& e)
     {
@@ -599,12 +661,13 @@ void UserMgr::createUserImpl(const std::string& userName, UserCreateMap props)
     std::sort(groupNames.begin(), groupNames.end());
     usersList.emplace(userName, std::make_unique<phosphor::user::Users>(
                                     bus, userObj.c_str(), groupNames, priv,
-                                    enabled, passwordExpiration, *this));
+                                    isEnabled, passwordExpiration, *this));
     serializer.store();
     lg2::info("User '{USERNAME}' created successfully", "USERNAME", userName);
     // send an event
-    sendEvent(MESSAGE_TYPE::RESOURCE_CREATED, Entry::Level::Informational,
-              std::vector<std::string>{}, userObj);
+    emitRedfishEvent(MESSAGE_TYPE::RESOURCE_CREATED,
+                     Entry::Level::Informational, std::vector<std::string>{},
+                     userObj);
     return;
 }
 
@@ -637,11 +700,20 @@ void UserMgr::deleteUserImpl(const std::string& userName)
         return;
     }
 
+    // Clear fail records first, but don't let failure block the actual
+    // deletion. If it fails, the user account is still removed.
     try
     {
-        // Clear user fail records
         executeUserClearFailRecords(userName.c_str());
-
+    }
+    catch (const InternalFailure& e)
+    {
+        lg2::warning(
+            "Failed to clear fail records for '{USERNAME}', continuing with deletion",
+            "USERNAME", userName);
+    }
+    try
+    {
         executeUserDelete(userName.c_str());
     }
     catch (const InternalFailure& e)
@@ -667,8 +739,9 @@ void UserMgr::deleteUserImpl(const std::string& userName)
     dbusObjectPath.push_back('/');
     dbusObjectPath += userName;
 
-    sendEvent(MESSAGE_TYPE::RESOURCE_DELETED, Entry::Level::Informational,
-              std::vector<std::string>{}, dbusObjectPath);
+    emitRedfishEvent(MESSAGE_TYPE::RESOURCE_DELETED,
+                     Entry::Level::Informational, std::vector<std::string>{},
+                     dbusObjectPath);
     return;
 }
 
@@ -685,7 +758,7 @@ void UserMgr::checkDeleteGroupConstraints(const std::string& groupName)
     if (std::find(groupsMgr.begin(), groupsMgr.end(), groupName) ==
         groupsMgr.end())
     {
-        lg2::error("Group '{GROUP}' already exists", "GROUP", groupName);
+        lg2::error("Group '{GROUP}' does not exist", "GROUP", groupName);
         elog<GroupNameDoesNotExists>();
     }
     checkAndThrowsForGroupChangeAllowed(groupName);
@@ -749,8 +822,7 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
     throwForUserExists(newUserName);
-    throwForUserNameConstraints(newUserName,
-                                usersList[userName].get()->userGroups());
+    throwForUserNameConstraints(newUserName, usersList[userName]->userGroups());
     try
     {
         executeUserRename(userName.c_str(), newUserName.c_str());
@@ -774,7 +846,7 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
     const auto& user = usersList[userName];
     std::string priv = user.get()->userPrivilege();
     std::vector<std::string> groupNames = user.get()->userGroups();
-    bool enabled = user.get()->userEnabled();
+    bool isEnabled = user.get()->userEnabled();
     uint64_t passwordExpiration = user.get()->passwordExpiration();
     sdbusplus::object_path tempObjPath(usersObjPath);
     tempObjPath /= newUserName;
@@ -786,21 +858,20 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
     usersList.erase(userName);
     usersList.emplace(newUserName,
                       std::make_unique<phosphor::user::Users>(
-                          bus, newUserObj.c_str(), groupNames, priv, enabled,
+                          bus, newUserObj.c_str(), groupNames, priv, isEnabled,
                           passwordExpiration, *this));
     // send event.
     std::string dbusObjectPath = usersObjPath;
     dbusObjectPath.push_back('/');
     dbusObjectPath += userName;
     std::vector<std::string> messageArgs = {"UserName", newUserName};
-    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-              Entry::Level::Informational, messageArgs, dbusObjectPath);
+    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                     Entry::Level::Informational, messageArgs, dbusObjectPath);
 
     if (err)
     {
         elog<InternalFailure>();
     }
-    return;
 }
 
 void UserMgr::updateGroupsAndPriv(const std::string& userName,
@@ -818,7 +889,7 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserDoesNotExist(userName);
     const std::vector<std::string>& oldGroupNames =
-        usersList[userName].get()->userGroups();
+        usersList[userName]->userGroups();
     std::vector<std::string> groupDiff;
     // Note: already dealing with sorted group lists.
     std::set_symmetric_difference(oldGroupNames.begin(), oldGroupNames.end(),
@@ -890,8 +961,8 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
     // send event.
     std::vector<std::string> messageArgs = {"MinPasswordLength",
                                             std::to_string(value)};
-    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-              Entry::Level::Informational, messageArgs, usersObjPath);
+    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                     Entry::Level::Informational, messageArgs, usersObjPath);
     return ret;
 }
 
@@ -940,8 +1011,8 @@ uint16_t UserMgr::maxLoginAttemptBeforeLockout(uint16_t value)
     // send a redfish event
     std::vector<std::string> messageArgs = {"MaxLoginAttemptBeforeLockout",
                                             std::to_string(value)};
-    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-              Entry::Level::Informational, messageArgs, usersObjPath);
+    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                     Entry::Level::Informational, messageArgs, usersObjPath);
     return ret;
 }
 
@@ -980,8 +1051,8 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
     // send a redfish event
     std::vector<std::string> messageArgs = {"AccountUnlockTimeout",
                                             std::to_string(value)};
-    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-              Entry::Level::Informational, messageArgs, usersObjPath);
+    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+                     Entry::Level::Informational, messageArgs, usersObjPath);
     return ret;
 }
 
@@ -997,29 +1068,26 @@ int UserMgr::getPamModuleConfValue(const std::string& confFile,
         return failure;
     }
     std::string line;
-    auto argSearch = argName + "=";
-    size_t startPos = 0;
-    size_t endPos = 0;
     while (getline(fileToRead, line))
     {
-        // skip comments section starting with #
-        if ((startPos = line.find('#')) != std::string::npos)
+        std::string_view parseLine{line};
+        const size_t commentPos = line.find('#');
+        if (commentPos != std::string::npos)
         {
-            if (startPos == 0)
+            // skip comments section starting with #
+            if (commentPos == 0)
             {
                 continue;
             }
-            // skip comments after meaningful section and process those
-            line = line.substr(0, startPos);
+            // Ignore comments after meaningful content.
+            parseLine = parseLine.substr(0, commentPos);
         }
-        if ((startPos = line.find(argSearch)) != std::string::npos)
+
+        auto valueRange = findPamArgValueRange(parseLine, argName);
+        if (valueRange.has_value())
         {
-            if ((endPos = line.find(' ', startPos)) == std::string::npos)
-            {
-                endPos = line.size();
-            }
-            startPos += argSearch.size();
-            argValue = line.substr(startPos, endPos - startPos);
+            argValue = line.substr(valueRange->first,
+                                   valueRange->second - valueRange->first);
             return success;
         }
     }
@@ -1038,41 +1106,40 @@ int UserMgr::setPamModuleConfValue(const std::string& confFile,
         lg2::error("Failed to open pam configuration file {FILENAME}",
                    "FILENAME", confFile);
         // Delete the unused tmp file
-        (void)std::remove(tmpConfFile.c_str());
+        if (std::remove(tmpConfFile.c_str()) != 0)
+        {
+            lg2::error("Failed to remove temporary file {TMPFILE}: {ERROR}",
+                       "TMPFILE", tmpConfFile, "ERROR", strerror(errno));
+        }
         return failure;
     }
     std::string line;
-    auto argSearch = argName + "=";
-    size_t startPos = 0;
-    size_t endPos = 0;
     bool found = false;
     while (getline(fileToRead, line))
     {
-        // skip comments section starting with #
-        if ((startPos = line.find('#')) != std::string::npos)
+        std::string_view parseLine{line};
+        const size_t commentPos = line.find('#');
+        if (commentPos != std::string::npos)
         {
-            if (startPos == 0)
+            // skip comments section starting with #
+            if (commentPos == 0)
             {
-                fileToWrite << line << std::endl;
+                fileToWrite << line << "\n";
                 continue;
             }
-            // skip comments after meaningful section and process those
-            line = line.substr(0, startPos);
+            // Ignore comments after meaningful content.
+            parseLine = parseLine.substr(0, commentPos);
         }
-        if ((startPos = line.find(argSearch)) != std::string::npos)
+
+        auto valueRange = findPamArgValueRange(parseLine, argName);
+        if (valueRange.has_value())
         {
-            if ((endPos = line.find(' ', startPos)) == std::string::npos)
-            {
-                endPos = line.size();
-            }
-            startPos += argSearch.size();
-            fileToWrite << line.substr(0, startPos) << argValue
-                        << line.substr(endPos, line.size() - endPos)
-                        << std::endl;
+            fileToWrite << line.substr(0, valueRange->first) << argValue
+                        << line.substr(valueRange->second) << "\n";
             found = true;
             continue;
         }
-        fileToWrite << line << std::endl;
+        fileToWrite << line << "\n";
     }
     fileToWrite.close();
     fileToRead.close();
@@ -1084,7 +1151,11 @@ int UserMgr::setPamModuleConfValue(const std::string& confFile,
         }
     }
     // No changes, so delete the unused tmp file
-    (void)std::remove(tmpConfFile.c_str());
+    if (std::remove(tmpConfFile.c_str()) != 0)
+    {
+        lg2::error("Failed to remove temporary file {TMPFILE}: {ERROR}",
+                   "TMPFILE", tmpConfFile, "ERROR", strerror(errno));
+    }
     return failure;
 }
 
@@ -1169,13 +1240,13 @@ bool UserMgr::parseFaillockForLockout(
     {
         return false;
     }
-    uint32_t unlockTimeout = AccountPolicyIface::accountUnlockTimeout();
-    if (unlockTimeout == 0)
+    uint32_t unlockTimeoutSecs = AccountPolicyIface::accountUnlockTimeout();
+    if (unlockTimeoutSecs == 0)
     {
         return true;
     }
-    if (lastFailedAttempt + static_cast<time_t>(unlockTimeout) <=
-        std::time(NULL))
+    if (lastFailedAttempt + static_cast<time_t>(unlockTimeoutSecs) <=
+        std::time(nullptr))
     {
         return false;
     }
@@ -1211,7 +1282,7 @@ bool UserMgr::userLockedForFailedAttempt(const std::string& userName,
 {
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
-    if (value == true)
+    if (value)
     {
         return userLockedForFailedAttempt(userName);
     }
@@ -1271,6 +1342,21 @@ bool UserMgr::userPasswordExpired(const std::string& userName)
     }
 
     return false;
+}
+
+void UserMgr::userPasswordExpired(const std::string& userName, bool value)
+{
+    throwForUidZero(userName);
+
+    if (!value)
+    {
+        elog<NotAllowed>(
+            NotAllowedArgument::REASON("Unexpiring password is not allowed"));
+    }
+    else
+    {
+        executeCmd("/usr/bin/chage", "--lastday", "0", userName.c_str());
+    }
 }
 
 UserSSHLists UserMgr::getUserAndSshGrpList()
@@ -1558,32 +1644,37 @@ bool UserMgr::isGroupMember(const std::string& userName, gid_t primaryGid,
     return false;
 }
 
+bool UserMgr::groupExistsOnSystem(const char* groupName)
+{
+    std::array<char, 4096> buffer{};
+    struct group grp;
+    struct group* resultPtr = nullptr;
+
+    int status = getgrnam_r(groupName, &grp, buffer.data(), buffer.max_size(),
+                            &resultPtr);
+    if (status == 0 && resultPtr != nullptr)
+    {
+        return true;
+    }
+    if (status != 0 && status != ENOENT && status != ESRCH)
+    {
+        lg2::error("Failed to look up predefined group '{GROUP}': {STATUS}",
+                   "GROUP", groupName, "STATUS", status);
+        return true; // treat lookup error as "exists" to avoid spurious
+                     // creation
+    }
+    return false;
+}
+
 void UserMgr::ensurePredefinedGroupsExist()
 {
     for (const char* group : predefinedGroups)
     {
-        std::array<char, 4096> buffer{};
-        struct group grp;
-        struct group* resultPtr = nullptr;
-
-        int status = getgrnam_r(group, &grp, buffer.data(), buffer.max_size(),
-                                &resultPtr);
-        if (status == 0 && resultPtr != nullptr)
+        if (groupExistsOnSystem(group))
         {
-            // Group already present on the system.
-            continue;
-        }
-        if (status != 0 && status != ENOENT && status != ESRCH)
-        {
-            // A non-zero status other than "not found" is a lookup error, so
-            // we can't safely conclude the group is missing - skip it.
-            lg2::error("Failed to look up predefined group '{GROUP}': {STATUS}",
-                       "GROUP", group, "STATUS", status);
             continue;
         }
 
-        // Either status == 0 with a null result, or ENOENT/ESRCH -> the group
-        // does not exist on the system.
         lg2::info("Predefined group '{GROUP}' is missing, creating it", "GROUP",
                   group);
         try
@@ -1610,6 +1701,9 @@ void UserMgr::executeGroupDeletion(const char* groupName)
 
 UserInfoMap UserMgr::getUserInfo(std::string userName)
 {
+    using UserType =
+        sdbusplus::common::xyz::openbmc_project::user::Manager::UserType;
+    using sdbusplus::common::xyz::openbmc_project::user::convertForMessage;
     UserInfoMap userInfo;
     // Check whether the given user is local user or not.
     if (isUserExist(userName))
@@ -1627,6 +1721,7 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
         userInfo.emplace("PasswordExpiration",
                          user.get()->passwordExpiration());
         userInfo.emplace("RemoteUser", false);
+        userInfo.emplace("UserType", convertForMessage(UserType::Internal));
     }
     else
     {
@@ -1634,12 +1729,11 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
 
         DbusUserObj objects = getPrivilegeMapperObject();
 
-        std::string ldapConfigPath;
-        std::string userPrivilege;
-
         try
         {
-            for (const auto& [path, interfaces] : objects)
+            std::string ldapConfigPath;
+            std::string userPrivilege;
+            for (const auto& [objPath, interfaces] : objects)
             {
                 auto it = interfaces.find("xyz.openbmc_project.Object.Enable");
                 if (it != interfaces.end())
@@ -1648,7 +1742,7 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
                     if (propIt != it->second.end() &&
                         std::get<bool>(propIt->second))
                     {
-                        ldapConfigPath = path.str + '/';
+                        ldapConfigPath = objPath.str + '/';
                         break;
                     }
                 }
@@ -1662,9 +1756,18 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
                 elog<UserNameDoesNotExist>();
             }
 
-            for (const auto& [path, interfaces] : objects)
+            if (ldapConfigPath.find("active_directory") != std::string::npos)
             {
-                if (!path.str.starts_with(ldapConfigPath))
+                userInfo.emplace("UserType", convertForMessage(UserType::AD));
+            }
+            else if (ldapConfigPath.find("openldap") != std::string::npos)
+            {
+                userInfo.emplace("UserType", convertForMessage(UserType::LDAP));
+            }
+
+            for (const auto& [objPath, interfaces] : objects)
+            {
+                if (!objPath.str.starts_with(ldapConfigPath))
                 {
                     continue;
                 }
@@ -1722,8 +1825,6 @@ void UserMgr::initializeAccountPolicy()
 {
     std::string valueStr;
     auto value = minPasswdLength;
-    uint64_t tmp = 0;
-
     if (getPamModuleConfValue(pwQualityConfigFile, minPasswdLenProp,
                               valueStr) != success)
     {
@@ -1733,12 +1834,7 @@ void UserMgr::initializeAccountPolicy()
     {
         try
         {
-            tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value = static_cast<decltype(value)>(tmp);
+            value = parseUnsignedConfigValue<decltype(value)>(valueStr);
         }
         catch (const std::exception& e)
         {
@@ -1755,15 +1851,9 @@ void UserMgr::initializeAccountPolicy()
     }
     else
     {
-        value = 0;
         try
         {
-            tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value = static_cast<decltype(value)>(tmp);
+            value = parseUnsignedConfigValue<decltype(value)>(valueStr);
         }
         catch (const std::exception& e)
         {
@@ -1784,17 +1874,15 @@ void UserMgr::initializeAccountPolicy()
         uint16_t value16 = 0;
         try
         {
-            tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value16)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value16 = static_cast<decltype(value16)>(tmp);
+            value16 = parseUnsignedConfigValue<decltype(value16)>(valueStr);
         }
         catch (const std::exception& e)
         {
-            lg2::error("Exception for MaxLoginAttemptBeforLockout: {ERR}",
-                       "ERR", e);
+            lg2::error(
+                "Failed to parse lockout policy {KEY} value '{VALUE}' from "
+                "{FILE}: {ERR}",
+                "KEY", maxFailedAttempt, "VALUE", valueStr, "FILE",
+                faillockConfigFile, "ERR", e);
             throw;
         }
         AccountPolicyIface::maxLoginAttemptBeforeLockout(value16);
@@ -1810,16 +1898,15 @@ void UserMgr::initializeAccountPolicy()
         uint32_t value32 = 0;
         try
         {
-            tmp = std::stoul(valueStr, nullptr);
-            if (tmp > std::numeric_limits<decltype(value32)>::max())
-            {
-                throw std::out_of_range("Out of range");
-            }
-            value32 = static_cast<decltype(value32)>(tmp);
+            value32 = parseUnsignedConfigValue<decltype(value32)>(valueStr);
         }
         catch (const std::exception& e)
         {
-            lg2::error("Exception for AccountUnlockTimeout: {ERR}", "ERR", e);
+            lg2::error(
+                "Failed to parse lockout policy {KEY} value '{VALUE}' from "
+                "{FILE}: {ERR}",
+                "KEY", unlockTimeout, "VALUE", valueStr, "FILE",
+                faillockConfigFile, "ERR", e);
             throw;
         }
         AccountPolicyIface::accountUnlockTimeout(value32);
@@ -1830,7 +1917,7 @@ void UserMgr::initializeAccountPolicy()
 #endif
 }
 
-void UserMgr::initUserObjects(void)
+void UserMgr::initUserObjects()
 {
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
@@ -2470,7 +2557,7 @@ void UserMgr::setPasswordExpirationImpl(const std::string& userName,
             duration_cast<days>(system_clock::now().time_since_epoch()).count();
     }
 
-    long int passwordAgeDays = spwd.sp_max;
+    long int passwordAgeDays;
     if (resetPasswordExpiration)
     {
         // if password expiration must be reset, do it via last negative maximum

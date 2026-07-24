@@ -1,12 +1,14 @@
 #include "mock_user_mgr.hpp"
 #include "user_mgr.hpp"
 
+#include <grp.h>
 #include <unistd.h>
 
 #include <sdbusplus/test/sdbus_mock.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 #include <xyz/openbmc_project/User/Common/error.hpp>
 
+#include <cerrno>
 #include <chrono>
 #include <ctime>
 #include <exception>
@@ -23,12 +25,12 @@ namespace user
 {
 
 using ::testing::_;
-using ::testing::Invoke;
 using ::testing::Return;
 using ::testing::Throw;
 
 using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
+using NotAllowed = sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
 using UserNameDoesNotExist =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameDoesNotExist;
 
@@ -171,10 +173,10 @@ class TestUserMgr : public testing::Test
                                    const PasswordInfo& newInfo)
     {
         EXPECT_CALL(mockManager, getShadowData(testing::StrEq(userName), _))
-            .WillOnce(Invoke([&oldInfo](auto, struct spwd& spwd) {
+            .WillOnce([&oldInfo](auto, struct spwd& spwd) {
                 spwd.sp_lstchg = oldInfo.lastChangeDate;
                 spwd.sp_max = oldInfo.maxAge;
-            }));
+            });
 
         EXPECT_CALL(mockManager, executeUserPasswordExpiration(
                                      testing::StrEq(userName),
@@ -195,10 +197,10 @@ class TestUserMgr : public testing::Test
                                      const PasswordInfo& info)
     {
         EXPECT_CALL(mockManager, getShadowData(testing::StrEq(userName), _))
-            .WillOnce(Invoke([&info](auto, struct spwd& spwd) {
+            .WillOnce([&info](auto, struct spwd& spwd) {
                 spwd.sp_lstchg = info.lastChangeDate;
                 spwd.sp_max = info.maxAge;
-            }));
+            });
 
         EXPECT_CALL(mockManager,
                     executeUserPasswordExpiration(
@@ -220,10 +222,10 @@ class TestUserMgr : public testing::Test
                                    const uint64_t expectedPasswordExpiration)
     {
         EXPECT_CALL(mockManager, getShadowData(testing::StrEq(userName), _))
-            .WillOnce(Invoke([&info](auto, struct spwd& spwd) {
+            .WillOnce([&info](auto, struct spwd& spwd) {
                 spwd.sp_lstchg = info.lastChangeDate;
                 spwd.sp_max = info.maxAge;
-            }));
+            });
 
         createLocalUser(userName, {"ssh"}, "priv-admin", true);
 
@@ -410,10 +412,10 @@ TEST_F(TestUserMgr, PasswordExpirationGetLastChangeZero)
     constexpr long passwordAge = 4;
 
     EXPECT_CALL(mockManager, getShadowData(testing::StrEq(userName), _))
-        .WillOnce(Invoke([](auto, struct spwd& spwd) {
+        .WillOnce([](auto, struct spwd& spwd) {
             spwd.sp_lstchg = lastChangeDate;
             spwd.sp_max = passwordAge;
-        }));
+        });
 
     createLocalUser(userName, {"ssh"}, "priv-admin", true);
 
@@ -462,10 +464,10 @@ TEST_F(TestUserMgr, PasswordExpirationInvalidDate)
     const std::string userName = getNextUserName();
 
     EXPECT_CALL(mockManager, getShadowData(testing::StrEq(userName), _))
-        .WillOnce(Invoke([](auto, struct spwd& spwd) {
+        .WillOnce([](auto, struct spwd& spwd) {
             spwd.sp_lstchg = 2;
             spwd.sp_max = 2;
-        }));
+        });
 
     EXPECT_CALL(mockManager, executeUserPasswordExpiration(_, _, _)).Times(0);
 
@@ -486,10 +488,10 @@ TEST_F(TestUserMgr, PasswordExpirationExecFail)
 
     constexpr long lastChangeDate = 3;
     EXPECT_CALL(mockManager, getShadowData(testing::StrEq(userName), _))
-        .WillOnce(Invoke([](auto, struct spwd& spwd) {
+        .WillOnce([](auto, struct spwd& spwd) {
             spwd.sp_lstchg = lastChangeDate;
             spwd.sp_max = 5;
-        }));
+        });
 
     constexpr long passwordAge = 11;
     EXPECT_CALL(mockManager,
@@ -638,7 +640,6 @@ class UserMgrInTest : public testing::Test, public UserMgr
             .WillByDefault([this]() {
                 ON_CALL(*this, isUserEnabled)
                     .WillByDefault(testing::Return(true));
-                testing::Return();
             });
 
         ON_CALL(*this, executeUserAdd(testing::_, testing::_, testing::_,
@@ -646,7 +647,6 @@ class UserMgrInTest : public testing::Test, public UserMgr
             .WillByDefault([this]() {
                 ON_CALL(*this, isUserEnabled)
                     .WillByDefault(testing::Return(false));
-                testing::Return();
             });
 
         ON_CALL(*this, executeUserDelete).WillByDefault(testing::Return());
@@ -666,7 +666,6 @@ class UserMgrInTest : public testing::Test, public UserMgr
             .WillByDefault([this]() {
                 ON_CALL(*this, isUserEnabled)
                     .WillByDefault(testing::Return(true));
-                testing::Return();
             });
 
         ON_CALL(*this,
@@ -674,7 +673,6 @@ class UserMgrInTest : public testing::Test, public UserMgr
             .WillByDefault([this]() {
                 ON_CALL(*this, isUserEnabled)
                     .WillByDefault(testing::Return(false));
-                testing::Return();
             });
 
         ON_CALL(*this, executeGroupCreation(testing::_))
@@ -686,6 +684,11 @@ class UserMgrInTest : public testing::Test, public UserMgr
         ON_CALL(*this, executeGroupCreation).WillByDefault(testing::Return());
 
         ON_CALL(*this, executeGroupDeletion).WillByDefault(testing::Return());
+
+        ON_CALL(*this, emitRedfishEvent).WillByDefault(testing::Return());
+
+        ON_CALL(*this, groupExistsOnSystem(testing::_))
+            .WillByDefault(testing::Return(false));
     }
     void eventLoop(uint8_t numberOfTimes)
     {
@@ -733,6 +736,14 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
     MOCK_METHOD(void, executeGroupDeletion, (const char*), (override));
 
+    MOCK_METHOD(bool, groupExistsOnSystem, (const char*), (override));
+
+    MOCK_METHOD(void, emitRedfishEvent,
+                (phosphor::logging::MESSAGE_TYPE,
+                 sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level,
+                 const std::vector<std::string>&, const std::string&),
+                (override));
+
     MOCK_METHOD(bool, isUserEnabled, (const std::string& userName), (override));
 
     MOCK_METHOD(void, getShadowData, (const std::string&, struct spwd& spwd),
@@ -744,6 +755,9 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
     MOCK_METHOD(bool, isUserExistSystem, (const std::string& userName),
                 (override));
+
+    MOCK_METHOD(std::unique_ptr<struct SystemUserInfo>, getSystemUser,
+                (const std::string& userName), (const, override));
 
   protected:
     static constexpr auto tempFilePath = "/tmp/test-data-XXXXXX";
@@ -772,10 +786,10 @@ class UserMgrInTest : public testing::Test, public UserMgr
                                     const PasswordExpirationInfo& info)
     {
         EXPECT_CALL(*this, getShadowData(testing::StrEq(userName), _))
-            .WillOnce(Invoke([&info](auto, struct spwd& spwd) {
+            .WillOnce([&info](auto, struct spwd& spwd) {
                 spwd.sp_lstchg = info.lastChangeDate;
                 spwd.sp_max = info.oldmaxAge;
-            }));
+            });
 
         EXPECT_CALL(*this, executeUserPasswordExpiration(
                                testing::StrEq(userName), info.lastChangeDate,
@@ -833,6 +847,48 @@ TEST_F(UserMgrInTest, SetPamModuleConfValueOnSuccess)
         getPamModuleConfValue(tempPWHistoryConfigFile, "remember", remember),
         0);
     EXPECT_EQ(remember, "1");
+}
+
+TEST_F(UserMgrInTest, GetPamModuleConfValueMatchesExactKey)
+{
+    static constexpr auto rawConfig = R"(
+deny=2
+root_unlock_time=111
+unlock_time=3
+)";
+
+    EXPECT_NO_THROW(dumpStringToFile(rawConfig, tempFaillockConfigFile));
+
+    std::string unlockTime;
+    EXPECT_EQ(getPamModuleConfValue(tempFaillockConfigFile, "unlock_time",
+                                    unlockTime),
+              0);
+    EXPECT_EQ(unlockTime, "3");
+}
+
+TEST_F(UserMgrInTest, SetPamModuleConfValueUpdatesOnlyExactKey)
+{
+    static constexpr auto rawConfig = R"(
+deny=2
+root_unlock_time=111
+unlock_time=3
+)";
+
+    EXPECT_NO_THROW(dumpStringToFile(rawConfig, tempFaillockConfigFile));
+    EXPECT_EQ(setPamModuleConfValue(tempFaillockConfigFile, "unlock_time", "9"),
+              0);
+
+    std::string unlockTime;
+    EXPECT_EQ(getPamModuleConfValue(tempFaillockConfigFile, "unlock_time",
+                                    unlockTime),
+              0);
+    EXPECT_EQ(unlockTime, "9");
+
+    std::string rootUnlockTime;
+    EXPECT_EQ(getPamModuleConfValue(tempFaillockConfigFile, "root_unlock_time",
+                                    rootUnlockTime),
+              0);
+    EXPECT_EQ(rootUnlockTime, "111");
 }
 
 TEST_F(UserMgrInTest, SetPamModuleConfValueTempFileOnSuccess)
@@ -996,16 +1052,43 @@ TEST_F(
 TEST_F(UserMgrInTest,
        ThrowForUserNameConstraintsRegexMismatchThrowsInvalidArgument)
 {
-#ifdef ENABLE_IPMI
     std::string startWithNumber = "0ABC";
     std::string startWithDisallowedCharacter = "[test";
+    std::string userWithDotCharacter = "user_with.dot";
+    std::string userWithSlashCharacter = "user_with/slash";
+    std::string userWithColonCharacter = "user_with:colon";
+#ifdef ENABLE_IPMI
     EXPECT_THROW(
         throwForUserNameConstraints(startWithNumber, {"ipmi"}),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
     EXPECT_THROW(
         throwForUserNameConstraints(startWithDisallowedCharacter, {"ipmi"}),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+    EXPECT_THROW(
+        throwForUserNameConstraints(userWithDotCharacter, {"ipmi"}),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+    EXPECT_THROW(
+        throwForUserNameConstraints(userWithSlashCharacter, {"ipmi"}),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+    EXPECT_THROW(
+        throwForUserNameConstraints(userWithColonCharacter, {"ipmi"}),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 #endif
+    // Slash and colon characters should not be allowed in both IPMI and
+    // non-IPMI use cases
+    EXPECT_THROW(
+        throwForUserNameConstraints(userWithSlashCharacter, {}),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+    EXPECT_THROW(
+        throwForUserNameConstraints(userWithColonCharacter, {}),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+}
+
+TEST_F(UserMgrInTest, AllowNonIpmiUserWithDotCharacter)
+{
+    // Should allow non-IPMI users with dot character in username
+    std::string userWithDotCharacter = "user_with.dot_character";
+    throwForUserNameConstraints(userWithDotCharacter, {});
 }
 
 TEST_F(UserMgrInTest, UserAddNotRootFailedWithInternalFailure)
@@ -1053,7 +1136,7 @@ TEST_F(UserMgrInTest, CreateUserThrowsInternalFailureWhenExecuteUserAddFails)
         .Times(3)
         .WillRepeatedly(Return(false));
     EXPECT_THROW(
-        createUser(username, {"redfish"}, "", true),
+        createUser(username, {"redfish"}, "priv-user", true),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
     EXPECT_FALSE(isUserExist(username));
 }
@@ -1076,7 +1159,7 @@ TEST_F(UserMgrInTest,
     EXPECT_CALL(*this, executeUserDelete(testing::StrEq(username)))
         .WillOnce(testing::DoDefault());
     EXPECT_THROW(
-        createUser(username, {"redfish"}, "", true),
+        createUser(username, {"redfish"}, "priv-user", true),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
     EXPECT_FALSE(isUserExist(username));
 }
@@ -1117,29 +1200,75 @@ TEST_F(UserMgrInTest, DeleteUserSuccessWhenExecuteUserSucceedsWithError)
 }
 
 TEST_F(UserMgrInTest,
-       DeleteUserThrowsInternalFailureWhenExecuteUserClearFailRecords)
+       DeleteUserSucceedsEvenWhenExecuteUserClearFailRecordsFails)
 {
     const char* username = "user";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+
+    // fail-record clear fails — should only warn, not abort
     EXPECT_CALL(*this, executeUserClearFailRecords(testing::StrEq(username)))
         .WillOnce(testing::Throw(
-            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()))
-        .WillOnce(testing::DoDefault());
-    EXPECT_CALL(*this, isUserExistSystem(testing::StrEq(username)))
-        .WillOnce(Return(true));
+            sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()));
 
-    EXPECT_THROW(
-        deleteUser(username),
-        sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
+    // delete must still be called and succeed
+    EXPECT_CALL(*this, executeUserDelete(testing::StrEq(username))).Times(1);
+
+    // user should be gone
+    EXPECT_NO_THROW(deleteUser(username));
+    EXPECT_FALSE(isUserExist(username));
+}
+
+TEST_F(UserMgrInTest, DeleteUserThrowsNotAllowedWhenUidZero)
+{
+    const std::string username = "sysadmin";
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-admin", true));
+
+    // Return uid 1000 for cleanup
+    EXPECT_CALL(*this, getSystemUser(testing::StrEq(username)))
+        .WillOnce([]() {
+            auto info = std::make_unique<struct SystemUserInfo>();
+            info->pwd.pw_uid = 0;
+            return info;
+        })
+        .WillOnce([]() {
+            auto info = std::make_unique<struct SystemUserInfo>();
+            info->pwd.pw_uid = 1000;
+            return info;
+        });
+
+    EXPECT_THROW(deleteUser(username), NotAllowed);
     EXPECT_TRUE(isUserExist(username));
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
+}
+
+TEST_F(UserMgrInTest, DeleteUserDoesNotThrowNotAllowedWhenUidNonZero)
+{
+    const std::string username = "regularuser";
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+    EXPECT_CALL(*this, getSystemUser(testing::StrEq(username))).WillOnce([]() {
+        auto info = std::make_unique<struct SystemUserInfo>();
+        info->pwd.pw_uid = 1000;
+        return info;
+    });
+
+    EXPECT_NO_THROW(deleteUser(username));
+    EXPECT_FALSE(isUserExist(username));
 }
 
 TEST_F(UserMgrInTest, ThrowForInvalidPrivilegeThrowsWhenPrivilegeIsInvalid)
 {
     EXPECT_THROW(
         throwForInvalidPrivilege("whatever"),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+}
+
+TEST_F(UserMgrInTest, ThrowForInvalidPrivilegeThrowsWhenPrivilegeIsEmpty)
+{
+    EXPECT_THROW(
+        throwForInvalidPrivilege(""),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 }
 
@@ -1908,10 +2037,10 @@ TEST_F(UserMgrInTest, CreateUser2UnexpiringPassword)
     setUpCreateUser(userName, enabled);
 
     EXPECT_CALL(*this, getShadowData(testing::StrEq(userName), _))
-        .WillOnce(Invoke([&lastChangeDate](auto, struct spwd& spwd) {
+        .WillOnce([&lastChangeDate](auto, struct spwd& spwd) {
             spwd.sp_lstchg = lastChangeDate;
             spwd.sp_max = passwordAge;
-        }));
+        });
 
     EXPECT_CALL(*this, executeUserPasswordExpiration(
                            testing::StrEq(userName), lastChangeDate,
@@ -2269,10 +2398,18 @@ TEST_F(UserMgrInTest, CheckDeleteGroupConstraintsThrowsForProtectedGroup)
 
 TEST_F(UserMgrInTest, ThrowForUidZeroThrowsForRootAndPassesForUnknown)
 {
-    // "root" resolves to UID 0 on the system -> NotAllowed.
+    // Mock root as UID 0 -> NotAllowed.
+    EXPECT_CALL(*this, getSystemUser(testing::StrEq("root"))).WillOnce([]() {
+        auto info = std::make_unique<struct SystemUserInfo>();
+        info->pwd.pw_uid = 0;
+        return info;
+    });
     EXPECT_THROW(throwForUidZero("root"),
                  sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed);
-    // A user that does not exist on the system -> no throw.
+
+    // Mock unknown user as not found -> no throw.
+    EXPECT_CALL(*this, getSystemUser(testing::StrEq("no_such_user_xyz_123")))
+        .WillOnce([]() { return nullptr; });
     EXPECT_NO_THROW(throwForUidZero("no_such_user_xyz_123"));
 }
 
@@ -2320,6 +2457,86 @@ TEST_F(UserMgrInTest, ParseFaillockForLockoutCountsAndTimeouts)
         recentFails.push_back(std::string(buf) + " tty1 V");
     }
     EXPECT_TRUE(parseFaillockForLockout(recentFails));
+}
+
+// ensurePredefinedGroupsExist tests
+
+// No predefined groups exist on the system -> executeGroupCreation called for
+// each predefined group.
+TEST_F(UserMgrInTest, EnsurePredefinedGroupsExist_AllGroupsMissing)
+{
+#ifdef ENABLE_IPMI
+    EXPECT_CALL(*this, executeGroupCreation(testing::_)).Times(7);
+#else
+    EXPECT_CALL(*this, executeGroupCreation(testing::_)).Times(6);
+#endif
+
+    EXPECT_NO_THROW(UserMgr::ensurePredefinedGroupsExist());
+}
+
+// executeGroupCreation throws InternalFailure -> error is swallowed, remaining
+// groups are still processed.
+TEST_F(UserMgrInTest, EnsurePredefinedGroupsExist_CreationFailureIsSuppressed)
+{
+#ifdef ENABLE_IPMI
+    EXPECT_CALL(*this, executeGroupCreation(testing::_))
+        .Times(7)
+        .WillRepeatedly(testing::Throw(InternalFailure()));
+#else
+    EXPECT_CALL(*this, executeGroupCreation(testing::_))
+        .Times(6)
+        .WillRepeatedly(testing::Throw(InternalFailure()));
+#endif
+
+    EXPECT_NO_THROW(UserMgr::ensurePredefinedGroupsExist());
+}
+
+// Tests for UserMgr::userPasswordExpired(const std::string& userName, bool
+// value) value=false rejects unexpiring, value=true calls chage --lastday 0,
+// UID-0 user is always rejected by throwForUidZero.
+TEST_F(UserMgrInTest, UserPasswordExpiredSetFalseThrowsNotAllowed)
+{
+    const std::string userName = getNextUserName();
+    EXPECT_NO_THROW(
+        UserMgr::createUser(userName, {"redfish", "ssh"}, "priv-user", true));
+
+    EXPECT_THROW(UserMgr::userPasswordExpired(userName, false), NotAllowed);
+
+    EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+}
+
+TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueUidZeroThrowsNotAllowed)
+{
+    const std::string userName = getNextUserName();
+    EXPECT_NO_THROW(
+        UserMgr::createUser(userName, {"redfish", "ssh"}, "priv-user", true));
+
+    EXPECT_CALL(*this, getSystemUser(testing::StrEq(userName)))
+        .WillOnce([]() {
+            auto info = std::make_unique<struct SystemUserInfo>();
+            info->pwd.pw_uid = 0;
+            return info;
+        })
+        .WillOnce([]() {
+            auto info = std::make_unique<struct SystemUserInfo>();
+            info->pwd.pw_uid = 1000;
+            return info;
+        });
+
+    EXPECT_THROW(UserMgr::userPasswordExpired(userName, true), NotAllowed);
+
+    EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+}
+
+TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueSuccess)
+{
+    const std::string userName = getNextUserName();
+    EXPECT_NO_THROW(
+        UserMgr::createUser(userName, {"redfish", "ssh"}, "priv-user", true));
+
+    EXPECT_THROW(UserMgr::userPasswordExpired(userName, true), InternalFailure);
+
+    EXPECT_NO_THROW(UserMgr::deleteUser(userName));
 }
 
 } // namespace user

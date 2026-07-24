@@ -15,17 +15,16 @@ namespace phosphor
 namespace ldap
 {
 
-static constexpr auto defaultNslcdFile = "nslcd.conf.default";
-static constexpr auto nsSwitchFile = "nsswitch.conf";
-static auto openLDAPDbusObjectPath =
-    std::string(LDAP_CONFIG_ROOT) + "/openldap";
-static auto adDbusObjectPath =
-    std::string(LDAP_CONFIG_ROOT) + "/active_directory";
+inline constexpr auto defaultNslcdFile = "nslcd.conf.default";
+inline constexpr auto nsSwitchFile = "nsswitch.conf";
+inline const auto openLDAPDbusObjectPath =
+    sdbusplus::object_path(LDAP_CONFIG_ROOT) / "openldap";
+inline const auto adDbusObjectPath =
+    sdbusplus::object_path(LDAP_CONFIG_ROOT) / "active_directory";
 
 using CreateIface = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::User::Ldap::server::Create>;
 
-// class Config;
 /** @class ConfigMgr
  *  @brief Creates LDAP server configuration.
  *  @details concrete implementation of xyz.openbmc_project.User.Ldap.Create
@@ -48,9 +47,10 @@ class ConfigMgr : public CreateIface
      *  @param[in] dbusPersistentPath - Persistent path for LDAP D-Bus property.
      *  @param[in] caCertFile - LDAP's CA certificate file.
      */
-    ConfigMgr(sdbusplus::bus_t& bus, const char* path, const char* filePath,
-              const char* dbusPersistentPath, const char* caCertFile,
-              const char* certFile) :
+    ConfigMgr(sdbusplus::bus_t& bus, const sdbusplus::object_path& path,
+              const std::string& filePath,
+              const std::string& dbusPersistentPath,
+              const std::string& caCertFile, const std::string& certFile) :
         CreateIface(bus, path, CreateIface::action::defer_emit),
         dbusPersistentPath(dbusPersistentPath), configFilePath(filePath),
         tlsCacertFile(caCertFile), tlsCertFile(certFile), bus(bus)
@@ -59,7 +59,7 @@ class ConfigMgr : public CreateIface
     /** @brief concrete implementation of the pure virtual function
             xyz.openbmc_project.User.Ldap.Create.createConfig.
      *  @param[in] ldapServerURI - LDAP URI of the server.
-     *  @param[in] ldapBindDN - distinguished name with which bind to bind
+     *  @param[in] ldapBindDN - distinguished name with which to bind
             to the directory server for lookups.
      *  @param[in] ldapBaseDN -  distinguished name to use as search base.
      *  @param[in] ldapBindDNPassword - credentials with which to bind.
@@ -68,7 +68,7 @@ class ConfigMgr : public CreateIface
             or openLDAP.
      *  @param[in] groupNameAttribute - Specifies attribute name that contains
      *             the name of the Group in the LDAP server.
-     *  @param[in] usernameAttribute - Specifies attribute name that contains
+     *  @param[in] userNameAttribute - Specifies attribute name that contains
      *             the username in the LDAP server.
      *  @returns the object path of the D-Bus object created.
      */
@@ -109,7 +109,7 @@ class ConfigMgr : public CreateIface
     std::string dbusPersistentPath;
 
   protected:
-    std::string configFilePath{};
+    std::filesystem::path configFilePath{};
     std::string tlsCacertFile{};
     std::string tlsCertFile{};
 

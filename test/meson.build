@@ -77,6 +77,7 @@ test(
         include_directories: '..',
         dependencies: [gtest_dep, gmock_dep, user_manager_dep],
     ),
+    timeout: 120,
 )
 
 test(

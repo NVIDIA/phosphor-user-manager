@@ -37,6 +37,12 @@ conf_data.set_quoted(
     description: 'Path of LDAP configuration file.',
 )
 
+conf_data.set(
+    'MAX_SYSTEM_USERS',
+    get_option('max_system_users'),
+    description: 'Maximum allowed number of system users',
+)
+
 conf_data.set_quoted(
     'TLS_CACERT_PATH',
     '/etc/ssl/certs/authority',
@@ -179,6 +185,7 @@ conf_header = configure_file(output: 'config.h', configuration: conf_data)
 cpp = meson.get_compiler('cpp')
 
 ldap_dep = cpp.find_library('ldap', required: get_option('ldap'))
+crypt_dep = cpp.find_library('crypt', required: false)
 nlohmann_json_dep = dependency('nlohmann_json', include_type: 'system')
 pam_dep = dependency('pam')
 phosphor_dbus_interfaces_dep = dependency('phosphor-dbus-interfaces')
@@ -217,6 +224,9 @@ user_manager_deps = [
     phosphor_logging_dep,
     sdbusplus_dep,
 ]
+if crypt_dep.found()
+    user_manager_deps += [crypt_dep]
+endif
 
 cpp_flags_loc = []
 
@@ -236,7 +246,6 @@ executable(
     'phosphor-user-manager',
     'mainapp.cpp',
     dependencies: user_manager_dep,
-    link_args: ['-lcrypt'],
     install: true,
 )
 

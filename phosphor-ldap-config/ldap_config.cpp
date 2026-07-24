@@ -16,8 +16,11 @@
 
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <limits>
+#include <numeric>
+#include <optional>
 #include <sstream>
-
 // Register class version
 // From cereal documentation;
 // "This macro should be placed at global scope"
@@ -36,7 +39,12 @@ constexpr auto certRootPath = "/xyz/openbmc_project/certs/client/ldap";
 constexpr auto authObjPath = "/xyz/openbmc_project/certs/authority/truststore";
 constexpr auto certIface = "xyz.openbmc_project.Certs.Certificate";
 constexpr auto certProperty = "CertificateString";
-
+// TLS cipher suites for secure LDAP connections
+const std::vector<std::string> tlsCiphers = {
+    "TLS_AES_256_GCM_SHA384",        "TLS_AES_128_GCM_SHA256",
+    "ECDHE-ECDSA-AES256-GCM-SHA384", "ECDHE-RSA-AES256-GCM-SHA384",
+    "ECDHE-ECDSA-AES128-GCM-SHA256", "ECDHE-RSA-AES128-GCM-SHA256",
+    "DHE-RSA-AES256-GCM-SHA384",     "DHE-RSA-AES128-GCM-SHA256"};
 using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 namespace fs = std::filesystem;
@@ -46,15 +54,54 @@ using NotAllowedArgument = xyz::openbmc_project::Common::NotAllowed;
 using PrivilegeMappingExists = sdbusplus::xyz::openbmc_project::User::Common::
     Error::PrivilegeMappingExists;
 
-using Line = std::string;
-using Key = std::string;
-using Val = std::string;
-using ConfigInfo = std::map<Key, Val>;
+static std::optional<Id> parseRoleMappingId(const std::string& idStr,
+                                            const fs::path& entryPath)
+{
+    if (idStr.empty())
+    {
+        lg2::error("Skipping role mapping entry with empty id: {PATH}", "PATH",
+                   entryPath);
+        return std::nullopt;
+    }
+    if (!std::all_of(idStr.begin(), idStr.end(), [](char c) {
+            return std::isdigit(static_cast<unsigned char>(c)) != 0;
+        }))
+    {
+        lg2::error("Skipping role mapping entry with non-digit id {ID}: {PATH}",
+                   "ID", idStr, "PATH", entryPath);
+        return std::nullopt;
+    }
+
+    unsigned long long idRaw = 0;
+    try
+    {
+        idRaw = std::stoull(idStr, nullptr, 10);
+    }
+    catch (const std::out_of_range&)
+    {
+        lg2::error(
+            "Skipping role mapping entry with out-of-range id {ID}: {PATH}",
+            "ID", idStr, "PATH", entryPath);
+        return std::nullopt;
+    }
+
+    if (idRaw > static_cast<unsigned long long>(std::numeric_limits<Id>::max()))
+    {
+        lg2::error(
+            "Skipping role mapping entry with id exceeding max value {ID}: "
+            "{PATH}",
+            "ID", idStr, "PATH", entryPath);
+        return std::nullopt;
+    }
+
+    return static_cast<Id>(idRaw);
+}
 
 Config::Config(
-    sdbusplus::bus_t& bus, const char* path, const char* filePath,
-    const char* caCertFile, const char* certFile, bool secureLDAP,
-    std::string ldapServerURI, std::string ldapBindDN, std::string ldapBaseDN,
+    sdbusplus::bus_t& bus, const sdbusplus::object_path& path,
+    const std::filesystem::path& filePath, const char* caCertFile,
+    const char* certFile, bool secureLDAP, std::string ldapServerURI,
+    std::string ldapBindDN, std::string ldapBaseDN,
     std::string&& ldapBindDNPassword, ConfigIface::SearchScope ldapSearchScope,
     ConfigIface::Type ldapType, bool ldapServiceEnabled,
     std::string userNameAttr, std::string groupNameAttr, ConfigMgr& parent) :
@@ -62,18 +109,17 @@ Config::Config(
     tlsCacertFile(caCertFile), tlsCertFile(certFile), configFilePath(filePath),
     objectPath(path), bus(bus), parent(parent),
     certificateInstalledSignal(
-        bus, sdbusplus::bus::match::rules::interfacesAdded(certRootPath),
+        bus, sdbusplus::match_rules::interfacesAdded(certRootPath),
         std::bind(std::mem_fn(&Config::certificateInstalled), this,
                   std::placeholders::_1)),
 
     cacertificateInstalledSignal(
-        bus, sdbusplus::bus::match::rules::interfacesAdded(authObjPath),
+        bus, sdbusplus::match_rules::interfacesAdded(authObjPath),
         std::bind(std::mem_fn(&Config::certificateInstalled), this,
                   std::placeholders::_1)),
 
     certificateChangedSignal(
-        bus,
-        sdbusplus::bus::match::rules::propertiesChanged(certObjPath, certIface),
+        bus, sdbusplus::match_rules::propertiesChanged(certObjPath, certIface),
         std::bind(std::mem_fn(&Config::certificateChanged), this,
                   std::placeholders::_1))
 {
@@ -122,23 +168,23 @@ Config::Config(
     parent.startOrStopService(nslcdService, enabled());
 }
 
-Config::Config(sdbusplus::bus_t& bus, const char* path, const char* filePath,
-               const char* caCertFile, const char* certFile,
-               ConfigIface::Type ldapType, ConfigMgr& parent) :
+Config::Config(sdbusplus::bus_t& bus, const sdbusplus::object_path& path,
+               const std::filesystem::path& filePath, const char* caCertFile,
+               const char* certFile, ConfigIface::Type ldapType,
+               ConfigMgr& parent) :
     Ifaces(bus, path, Ifaces::action::defer_emit), secureLDAP(false),
     tlsCacertFile(caCertFile), tlsCertFile(certFile), configFilePath(filePath),
     objectPath(path), bus(bus), parent(parent),
     certificateInstalledSignal(
-        bus, sdbusplus::bus::match::rules::interfacesAdded(certRootPath),
+        bus, sdbusplus::match_rules::interfacesAdded(certRootPath),
         std::bind(std::mem_fn(&Config::certificateInstalled), this,
                   std::placeholders::_1)),
     cacertificateInstalledSignal(
-        bus, sdbusplus::bus::match::rules::interfacesAdded(authObjPath),
+        bus, sdbusplus::match_rules::interfacesAdded(authObjPath),
         std::bind(std::mem_fn(&Config::certificateInstalled), this,
                   std::placeholders::_1)),
     certificateChangedSignal(
-        bus,
-        sdbusplus::bus::match::rules::propertiesChanged(certObjPath, certIface),
+        bus, sdbusplus::match_rules::propertiesChanged(certObjPath, certIface),
         std::bind(std::mem_fn(&Config::certificateChanged), this,
                   std::placeholders::_1))
 {
@@ -208,7 +254,6 @@ void Config::writeConfig()
 {
     std::stringstream confData;
     auto isPwdTobeWritten = false;
-    std::string userNameAttr;
 
     confData << "uid root\n";
     confData << "gid root\n\n";
@@ -240,23 +285,34 @@ void Config::writeConfig()
     }
     confData << "base passwd " << ldapBaseDN() << "\n";
     confData << "base shadow " << ldapBaseDN() << "\n\n";
-    if (secureLDAP == true)
+    if (secureLDAP)
     {
         confData << "ssl on\n";
         confData << "tls_reqcert hard\n";
         if (fs::is_directory(tlsCacertFile.c_str()))
         {
-            confData << "tls_cacertdir " << tlsCacertFile.c_str() << "\n";
+            confData << "tls_cacertdir " << tlsCacertFile << "\n";
         }
         else
         {
-            confData << "tls_cacertfile " << tlsCacertFile.c_str() << "\n";
+            confData << "tls_cacertfile " << tlsCacertFile << "\n";
         }
         if (fs::exists(tlsCertFile.c_str()))
         {
-            confData << "tls_cert " << tlsCertFile.c_str() << "\n";
-            confData << "tls_key " << tlsCertFile.c_str() << "\n";
+            confData << "tls_cert " << tlsCertFile << "\n";
+            confData << "tls_key " << tlsCertFile << "\n";
         }
+        // Configure TLS cipher suites
+        confData << "tls_ciphers "
+                 << std::accumulate(
+                        std::next(tlsCiphers.begin()), tlsCiphers.end(),
+                        tlsCiphers[0],
+                        [](std::string&& val, const std::string& cipher) {
+                            val += ':';
+                            val += cipher;
+                            return val;
+                        })
+                 << "\n";
     }
     else
     {
@@ -315,31 +371,61 @@ void Config::writeConfig()
     }
     try
     {
-        std::fstream stream(configFilePath.c_str(), std::fstream::out);
+        // Open file with explicit error checking
+        std::ofstream stream(configFilePath.c_str(),
+                             std::ios::out | std::ios::trunc);
+        if (!stream.is_open())
+        {
+            lg2::error("Failed to open LDAP config file for writing: {PATH}",
+                       "PATH", configFilePath);
+            elog<InternalFailure>();
+        }
+
         // remove the read permission from others if password is being written.
         // nslcd forces this behaviour.
         auto permission = fs::perms::owner_read | fs::perms::owner_write |
                           fs::perms::group_read;
+
+        std::error_code ec;
         if (isPwdTobeWritten)
         {
-            fs::permissions(configFilePath, permission);
+            fs::permissions(configFilePath, permission, ec);
+            if (ec)
+            {
+                lg2::error(
+                    "Failed to set restrictive permissions on config file: {ERR}",
+                    "ERR", ec.message());
+                elog<InternalFailure>();
+            }
         }
         else
         {
-            fs::permissions(configFilePath,
-                            permission | fs::perms::others_read);
+            fs::permissions(configFilePath, permission | fs::perms::others_read,
+                            ec);
+            if (ec)
+            {
+                lg2::warning("Failed to set permissions on config file: {ERR}",
+                             "ERR", ec.message());
+            }
         }
 
         stream << confData.str();
         stream.flush();
+        if (!stream.good())
+        {
+            lg2::error("Error writing to LDAP config file: {PATH}", "PATH",
+                       configFilePath);
+            stream.close();
+            elog<InternalFailure>();
+        }
+
         stream.close();
     }
     catch (const std::exception& e)
     {
-        lg2::error("Exception: {ERR}", "ERR", e);
+        lg2::error("Failed to write LDAP configuration: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
-    return;
 }
 
 std::string Config::ldapBindDNPassword(std::string value)
@@ -813,24 +899,49 @@ void Config::load(Archive& archive, const std::uint32_t /*version*/)
 
 void Config::serialize()
 {
-    if (!fs::exists(configPersistPath.c_str()))
+    try
     {
         std::ofstream os(configPersistPath.string(),
                          std::ios::binary | std::ios::out);
+        if (!os.is_open())
+        {
+            lg2::error("Failed to open persistence file for writing: {PATH}",
+                       "PATH", configPersistPath.string());
+            elog<InternalFailure>();
+        }
+
         auto permission = fs::perms::owner_read | fs::perms::owner_write |
                           fs::perms::group_read;
-        fs::permissions(configPersistPath, permission);
+        std::error_code ec;
+        fs::permissions(configPersistPath, permission, ec);
+        if (ec)
+        {
+            lg2::error("Failed to set permissions on persistence file: {ERR}",
+                       "ERR", ec.message());
+            elog<InternalFailure>();
+        }
+
         cereal::BinaryOutputArchive oarchive(os);
         oarchive(*this);
+
+        os.flush();
+        if (!os.good())
+        {
+            lg2::error("Error during serialization to {PATH}", "PATH",
+                       configPersistPath.string());
+            elog<InternalFailure>();
+        }
     }
-    else
+    catch (const cereal::Exception& e)
     {
-        std::ofstream os(configPersistPath.string(),
-                         std::ios::binary | std::ios::out);
-        cereal::BinaryOutputArchive oarchive(os);
-        oarchive(*this);
+        lg2::error("Cereal serialization error: {ERR}", "ERR", e);
+        elog<InternalFailure>();
     }
-    return;
+    catch (const fs::filesystem_error& e)
+    {
+        lg2::error("Filesystem error during serialization: {ERR}", "ERR", e);
+        elog<InternalFailure>();
+    }
 }
 
 bool Config::deserialize()
@@ -841,6 +952,14 @@ bool Config::deserialize()
         {
             std::ifstream is(configPersistPath.c_str(),
                              std::ios::in | std::ios::binary);
+            if (!is.is_open())
+            {
+                lg2::error(
+                    "Failed to open persistence file for reading: {PATH}",
+                    "PATH", configPersistPath.string());
+                return false;
+            }
+
             cereal::BinaryInputArchive iarchive(is);
             iarchive(*this);
 
@@ -852,24 +971,37 @@ bool Config::deserialize()
             {
                 secureLDAP = true;
             }
+            else
+            {
+                lg2::warning(
+                    "Deserialized LDAP URI is invalid, configuration may be corrupt");
+            }
+
             return true;
         }
         return false;
     }
     catch (const cereal::Exception& e)
     {
-        lg2::error("Exception: {ERR}", "ERR", e);
+        lg2::error("Cereal deserialization error: {ERR}", "ERR", e);
         std::error_code ec;
         fs::remove(configPersistPath, ec);
+        if (ec)
+        {
+            lg2::warning("Failed to remove corrupt persistence file: {ERR}",
+                         "ERR", ec.message());
+        }
         return false;
     }
     catch (const fs::filesystem_error& e)
     {
+        lg2::error("Filesystem error during deserialization: {ERR}", "ERR", e);
         return false;
     }
 }
 
-ObjectPath Config::create(std::string groupName, std::string privilege)
+sdbusplus::object_path Config::create(std::string groupName,
+                                      std::string privilege)
 {
     checkPrivilegeMapper(groupName);
     checkPrivilegeLevel(privilege);
@@ -877,7 +1009,7 @@ ObjectPath Config::create(std::string groupName, std::string privilege)
     entryId++;
 
     // Object path for the LDAP group privilege mapper entry
-    fs::path mapperObjectPath = objectPath;
+    sdbusplus::object_path mapperObjectPath = objectPath;
     mapperObjectPath /= "role_map";
     mapperObjectPath /= std::to_string(entryId);
 
@@ -886,13 +1018,13 @@ ObjectPath Config::create(std::string groupName, std::string privilege)
 
     // Create mapping for LDAP privilege mapper entry
     auto entry = std::make_unique<LDAPMapperEntry>(
-        bus, mapperObjectPath.string().c_str(), persistPath.string().c_str(),
-        groupName, privilege, *this);
+        bus, mapperObjectPath, persistPath.string(), groupName, privilege,
+        *this);
 
     phosphor::ldap::serialize(*entry, std::move(persistPath));
 
     PrivilegeMapperList.emplace(entryId, std::move(entry));
-    return mapperObjectPath.string();
+    return mapperObjectPath;
 }
 
 void Config::deletePrivilegeMapper(Id id)
@@ -948,7 +1080,6 @@ void Config::checkPrivilegeLevel(const std::string& privilege)
 
 void Config::restoreRoleMapping()
 {
-    namespace fs = std::filesystem;
     fs::path dir = parent.dbusPersistentPath;
     dir += objectPath;
     dir /= "role_map";
@@ -960,8 +1091,19 @@ void Config::restoreRoleMapping()
 
     for (auto& file : fs::directory_iterator(dir))
     {
+        if (!file.is_regular_file())
+        {
+            lg2::error("Skipping non-regular role mapping entry: {PATH}",
+                       "PATH", file.path());
+            continue;
+        }
+
         std::string id = file.path().filename().c_str();
-        size_t idNum = std::stol(id);
+        std::optional<Id> idNum = parseRoleMappingId(id, file.path());
+        if (!idNum)
+        {
+            continue;
+        }
 
         auto entryPath = objectPath + '/' + "role_map" + '/' + id;
         auto persistPath = parent.dbusPersistentPath + entryPath;
@@ -970,10 +1112,10 @@ void Config::restoreRoleMapping()
         if (phosphor::ldap::deserialize(file.path(), *entry))
         {
             entry->Interfaces::emit_object_added();
-            PrivilegeMapperList.emplace(idNum, std::move(entry));
-            if (idNum > entryId)
+            PrivilegeMapperList.emplace(*idNum, std::move(entry));
+            if (*idNum > entryId)
             {
-                entryId = idNum;
+                entryId = *idNum;
             }
         }
     }

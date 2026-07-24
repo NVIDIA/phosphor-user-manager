@@ -24,15 +24,13 @@ using ConfigIface = sdbusplus::xyz::openbmc_project::User::Ldap::server::Config;
 using EnableIface = sdbusplus::xyz::openbmc_project::Object::server::Enable;
 using CreateIface = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::User::Ldap::server::Create>;
-namespace fs = std::filesystem;
 using MapperIface =
     sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapper;
 
 using Ifaces =
     sdbusplus::server::object_t<ConfigIface, EnableIface, MapperIface>;
-using ObjectPath = sdbusplus::object_path;
 
-namespace sdbus_rule = sdbusplus::bus::match::rules;
+namespace sdbus_rule = sdbusplus::match_rules;
 
 class ConfigMgr;
 class MockConfigMgr;
@@ -76,10 +74,11 @@ class Config : public Ifaces
      *  @param[in] parent - parent of config object.
      */
 
-    Config(sdbusplus::bus_t& bus, const char* path, const char* filePath,
-           const char* caCertFile, const char* certFile, bool secureLDAP,
-           std::string ldapServerURI, std::string ldapBindDN,
-           std::string ldapBaseDN, std::string&& ldapBindDNPassword,
+    Config(sdbusplus::bus_t& bus, const sdbusplus::object_path& path,
+           const std::filesystem::path& filePath, const char* caCertFile,
+           const char* certFile, bool secureLDAP, std::string ldapServerURI,
+           std::string ldapBindDN, std::string ldapBaseDN,
+           std::string&& ldapBindDNPassword,
            ConfigIface::SearchScope ldapSearchScope, ConfigIface::Type ldapType,
            bool ldapServiceEnabled, std::string groupNameAttribute,
            std::string userNameAttribute, ConfigMgr& parent);
@@ -88,13 +87,15 @@ class Config : public Ifaces
      *  @param[in] bus - Bus to attach to.
      *  @param[in] path - The D-Bus object path to attach at.
      *  @param[in] filePath - LDAP configuration file.
+     *  @param[in] caCertFile - LDAP's CA certificate file.
+     *  @param[in] certFile - LDAP's client certificate file.
      *  @param[in] ldapType - Specifies the LDAP server type which can be AD
      *              or openLDAP.
      *  @param[in] parent - parent of config object.
      */
-    Config(sdbusplus::bus_t& bus, const char* path, const char* filePath,
-           const char* caCertFile, const char* certFile,
-           ConfigIface::Type ldapType, ConfigMgr& parent);
+    Config(sdbusplus::bus_t& bus, const sdbusplus::object_path& path,
+           const std::filesystem::path& filePath, const char* caCertFile,
+           const char* certFile, ConfigIface::Type ldapType, ConfigMgr& parent);
 
     using ConfigIface::groupNameAttribute;
     using ConfigIface::ldapBaseDN;
@@ -156,7 +157,7 @@ class Config : public Ifaces
      */
     std::string groupNameAttribute(std::string value) override;
 
-    /** @brief Update the BindDNPasword property.
+    /** @brief Update the BindDNPassword property.
      *  @param[in] value - ldapBindDNPassword value to be updated.
      *  @returns value of changed ldapBindDNPassword.
      */
@@ -207,7 +208,8 @@ class Config : public Ifaces
      *  @return On success return the D-Bus object path of the created privilege
      *          mapper entry.
      */
-    ObjectPath create(std::string groupName, std::string privilege) override;
+    sdbusplus::object_path create(std::string groupName,
+                                  std::string privilege) override;
 
     /** @brief Delete privilege mapping for LDAP group
      *
@@ -246,7 +248,7 @@ class Config : public Ifaces
     std::string ldapBindPassword{};
     std::string tlsCacertFile{};
     std::string tlsCertFile{};
-    std::string configFilePath{};
+    std::filesystem::path configFilePath{};
     std::string objectPath{};
     std::filesystem::path configPersistPath{};
 
@@ -255,7 +257,7 @@ class Config : public Ifaces
 
     /** @brief Create a new LDAP config file.
      */
-    virtual void writeConfig();
+    void writeConfig();
 
     /** @brief reference to config manager object */
     ConfigMgr& parent;
@@ -277,15 +279,15 @@ class Config : public Ifaces
      *  @param[in] msg - sdbusplus message
      */
     void certificateInstalled(sdbusplus::message_t& msg);
-    sdbusplus::bus::match_t certificateInstalledSignal;
+    sdbusplus::match certificateInstalledSignal;
 
-    sdbusplus::bus::match_t cacertificateInstalledSignal;
+    sdbusplus::match cacertificateInstalledSignal;
 
     /** @brief React to certificate changed signal
      *  @param[in] msg - sdbusplus message
      */
     void certificateChanged(sdbusplus::message_t& msg);
-    sdbusplus::bus::match_t certificateChangedSignal;
+    sdbusplus::match certificateChangedSignal;
 
     friend class MockConfigMgr;
 };
