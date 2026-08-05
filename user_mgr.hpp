@@ -669,16 +669,6 @@ class UserMgr : public Ifaces
 
     virtual bool groupExistsOnSystem(const char* groupName);
 
-    virtual void emitRedfishEvent(
-        phosphor::logging::MESSAGE_TYPE message,
-        sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level severity,
-        const std::vector<std::string>& messageArgs,
-        const std::string& dbusObjpath)
-    {
-        phosphor::logging::sendEvent(message, severity, messageArgs,
-                                     dbusObjpath);
-    }
-
     virtual void executeUserPasswordExpiration(
         const char* userName, const long int passwordLastChange,
         const long int passwordAge) const;

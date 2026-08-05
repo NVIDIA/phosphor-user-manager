@@ -685,8 +685,6 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
         ON_CALL(*this, executeGroupDeletion).WillByDefault(testing::Return());
 
-        ON_CALL(*this, emitRedfishEvent).WillByDefault(testing::Return());
-
         ON_CALL(*this, groupExistsOnSystem(testing::_))
             .WillByDefault(testing::Return(false));
     }
@@ -737,12 +735,6 @@ class UserMgrInTest : public testing::Test, public UserMgr
     MOCK_METHOD(void, executeGroupDeletion, (const char*), (override));
 
     MOCK_METHOD(bool, groupExistsOnSystem, (const char*), (override));
-
-    MOCK_METHOD(void, emitRedfishEvent,
-                (phosphor::logging::MESSAGE_TYPE,
-                 sdbusplus::xyz::openbmc_project::Logging::server::Entry::Level,
-                 const std::vector<std::string>&, const std::string&),
-                (override));
 
     MOCK_METHOD(bool, isUserEnabled, (const std::string& userName), (override));
 

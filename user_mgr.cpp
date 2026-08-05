@@ -665,9 +665,8 @@ void UserMgr::createUserImpl(const std::string& userName, UserCreateMap props)
     serializer.store();
     lg2::info("User '{USERNAME}' created successfully", "USERNAME", userName);
     // send an event
-    emitRedfishEvent(MESSAGE_TYPE::RESOURCE_CREATED,
-                     Entry::Level::Informational, std::vector<std::string>{},
-                     userObj);
+    sendEvent(MESSAGE_TYPE::RESOURCE_CREATED, Entry::Level::Informational,
+              std::vector<std::string>{}, userObj);
     return;
 }
 
@@ -739,9 +738,8 @@ void UserMgr::deleteUserImpl(const std::string& userName)
     dbusObjectPath.push_back('/');
     dbusObjectPath += userName;
 
-    emitRedfishEvent(MESSAGE_TYPE::RESOURCE_DELETED,
-                     Entry::Level::Informational, std::vector<std::string>{},
-                     dbusObjectPath);
+    sendEvent(MESSAGE_TYPE::RESOURCE_DELETED, Entry::Level::Informational,
+              std::vector<std::string>{}, dbusObjectPath);
     return;
 }
 
@@ -865,8 +863,8 @@ void UserMgr::renameUser(std::string userName, std::string newUserName)
     dbusObjectPath.push_back('/');
     dbusObjectPath += userName;
     std::vector<std::string> messageArgs = {"UserName", newUserName};
-    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-                     Entry::Level::Informational, messageArgs, dbusObjectPath);
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, dbusObjectPath);
 
     if (err)
     {
@@ -961,8 +959,8 @@ uint8_t UserMgr::minPasswordLength(uint8_t value)
     // send event.
     std::vector<std::string> messageArgs = {"MinPasswordLength",
                                             std::to_string(value)};
-    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-                     Entry::Level::Informational, messageArgs, usersObjPath);
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, usersObjPath);
     return ret;
 }
 
@@ -1011,8 +1009,8 @@ uint16_t UserMgr::maxLoginAttemptBeforeLockout(uint16_t value)
     // send a redfish event
     std::vector<std::string> messageArgs = {"MaxLoginAttemptBeforeLockout",
                                             std::to_string(value)};
-    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-                     Entry::Level::Informational, messageArgs, usersObjPath);
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, usersObjPath);
     return ret;
 }
 
@@ -1051,8 +1049,8 @@ uint32_t UserMgr::accountUnlockTimeout(uint32_t value)
     // send a redfish event
     std::vector<std::string> messageArgs = {"AccountUnlockTimeout",
                                             std::to_string(value)};
-    emitRedfishEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
-                     Entry::Level::Informational, messageArgs, usersObjPath);
+    sendEvent(MESSAGE_TYPE::PROPERTY_VALUE_MODIFIED,
+              Entry::Level::Informational, messageArgs, usersObjPath);
     return ret;
 }
 
