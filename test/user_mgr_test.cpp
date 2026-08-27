@@ -2495,6 +2495,8 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetFalseThrowsNotAllowed)
     EXPECT_THROW(UserMgr::userPasswordExpired(userName, false), NotAllowed);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+
+    eventLoop(5);
 }
 
 TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueUidZeroThrowsNotAllowed)
@@ -2518,6 +2520,8 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueUidZeroThrowsNotAllowed)
     EXPECT_THROW(UserMgr::userPasswordExpired(userName, true), NotAllowed);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+
+    eventLoop(5);
 }
 
 TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueSuccess)
@@ -2529,6 +2533,8 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueSuccess)
     EXPECT_THROW(UserMgr::userPasswordExpired(userName, true), InternalFailure);
 
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+
+    eventLoop(5);
 }
 
 } // namespace user
