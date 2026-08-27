@@ -694,22 +694,10 @@ class UserMgr : public Ifaces
      */
     void throwForInvalidGroups(const std::vector<std::string>& groupName);
 
-    /** @brief restrict a group to the UID 0 user only
-     *  The given group must not be assigned to regular users. Only the UID 0
-     *  (root) user is allowed to belong to it, so the group is silently removed
-     *  from the list for any other user. For example "ssh" (mapped to
-     *  ManagerConsole in bmcweb) is restricted this way. Note that "ssh" is
-     *  also what selects an interactive login shell, so stripping it leaves
-     *  non-UID-0 users with /sbin/nologin.
-     *
-     *  @param[in] userName - name of the user the groups are applied to
-     *  @param[in,out] groupNames - user groups; grpName is stripped for
-     *                              non-UID-0 users
-     *  @param[in] grpName - name of the group to restrict to UID 0
-     */
-    void filterRestrictedGroups(const std::string& userName,
-                                std::vector<std::string>& groupNames,
-                                const std::string& grpName);
+    /** @brief throw RestrictedGroup if the UID-0-only grpName is requested */
+    void throwForRestrictedGroups(const std::string& userName,
+                                  const std::vector<std::string>& groupNames,
+                                  const std::string& grpName);
 
     void initializeAccountPolicy();
 

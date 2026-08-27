@@ -121,6 +121,8 @@ using UserNameDoesNotExist =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameDoesNotExist;
 using UserNameGroupFail =
     sdbusplus::xyz::openbmc_project::User::Common::Error::UserNameGroupFail;
+using RestrictedGroup =
+    sdbusplus::xyz::openbmc_project::User::Common::Error::RestrictedGroup;
 using NoResource =
     sdbusplus::xyz::openbmc_project::User::Common::Error::NoResource;
 using NotAllowed = sdbusplus::xyz::openbmc_project::Common::Error::NotAllowed;
@@ -547,9 +549,9 @@ void UserMgr::throwForInvalidGroups(const std::vector<std::string>& groupNames)
 }
 
 // Nvidia code starts
-void UserMgr::filterRestrictedGroups(const std::string& userName,
-                                     std::vector<std::string>& groupNames,
-                                     const std::string& grpName)
+void UserMgr::throwForRestrictedGroups(
+    const std::string& userName, const std::vector<std::string>& groupNames,
+    const std::string& grpName)
 {
     auto it = std::find(groupNames.begin(), groupNames.end(), grpName);
     if (it == groupNames.end())
@@ -557,10 +559,12 @@ void UserMgr::filterRestrictedGroups(const std::string& userName,
         return;
     }
 
-    lg2::info("Removing '{GROUP}' group from non-root user '{USERNAME}'",
-              "GROUP", grpName, "USERNAME", userName);
-    groupNames.erase(it);
+    lg2::error("Group '{GROUP}' is restricted to the UID 0 user and cannot be "
+               "assigned to '{USERNAME}'",
+               "GROUP", grpName, "USERNAME", userName);
+    elog<RestrictedGroup>();
 }
+
 // Nvidia code ends
 
 std::vector<std::string> UserMgr::readAllGroupsOnSystem()
@@ -601,15 +605,14 @@ void UserMgr::createUserImpl(const std::string& userName, UserCreateMap props)
 
     throwForInvalidPrivilege(priv);
     throwForInvalidGroups(groupNames);
-    throwForUidZero(userName);
-    // Nvidia code starts
-    // The "ssh" group (ManagerConsole in bmcweb) is reserved for the
-    // UID 0 user. Don't add it unless the user is UID 0.
-    filterRestrictedGroups(userName, groupNames, grpSsh);
-    // Nvidia code ends
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};
     throwForUserExists(userName);
+    throwForUidZero(userName);
+    // Nvidia code starts
+    // "ssh" is reserved for UID 0: reject rather than silently drop it.
+    throwForRestrictedGroups(userName, groupNames, grpSsh);
+    // Nvidia code ends
     throwForUserNameConstraints(userName, groupNames);
     throwForMaxGrpUserCount(groupNames);
 
@@ -880,8 +883,8 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
     throwForInvalidGroups(groupNames);
     throwForUidZero(userName);
     // Nvidia code starts
-    // Strip "ssh" (ManagerConsole) for any non-UID-0 user.
-    filterRestrictedGroups(userName, groupNames, grpSsh);
+    // "ssh" is reserved for UID 0: reject rather than silently drop it.
+    throwForRestrictedGroups(userName, groupNames, grpSsh);
     // Nvidia code ends
     // All user management lock has to be based on /etc/shadow
     // TODO  phosphor-user-manager#10 phosphor::user::shadow::Lock lock{};

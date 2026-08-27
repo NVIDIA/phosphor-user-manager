@@ -1160,7 +1160,7 @@ TEST_F(UserMgrInTest, DeleteUserThrowsInternalFailureWhenExecuteUserDeleteFails)
 {
     std::string username = "user";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     EXPECT_CALL(*this, executeUserDelete(testing::StrEq(username)))
         .WillOnce(testing::Throw(
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()))
@@ -1180,7 +1180,7 @@ TEST_F(UserMgrInTest, DeleteUserSuccessWhenExecuteUserSucceedsWithError)
 {
     std::string username = "user";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     EXPECT_CALL(*this, executeUserDelete(testing::StrEq(username)))
         .WillOnce(testing::Throw(
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()));
@@ -1196,7 +1196,7 @@ TEST_F(UserMgrInTest,
 {
     const char* username = "user";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
 
     // fail-record clear fails — should only warn, not abort
     EXPECT_CALL(*this, executeUserClearFailRecords(testing::StrEq(username)))
@@ -1215,7 +1215,7 @@ TEST_F(UserMgrInTest, DeleteUserThrowsNotAllowedWhenUidZero)
 {
     const std::string username = "sysadmin";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-admin", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-admin", true));
 
     // Return uid 1000 for cleanup
     EXPECT_CALL(*this, getSystemUser(testing::StrEq(username)))
@@ -1239,7 +1239,7 @@ TEST_F(UserMgrInTest, DeleteUserDoesNotThrowNotAllowedWhenUidNonZero)
 {
     const std::string username = "regularuser";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     EXPECT_CALL(*this, getSystemUser(testing::StrEq(username))).WillOnce([]() {
         auto info = std::make_unique<struct SystemUserInfo>();
         info->pwd.pw_uid = 1000;
@@ -1297,7 +1297,7 @@ TEST_F(UserMgrInTest, RenameUserOnSuccess)
 {
     std::string username = "user001";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     std::string newUsername = "user002";
 
     EXPECT_NO_THROW(UserMgr::renameUser(username, newUsername));
@@ -1309,8 +1309,8 @@ TEST_F(UserMgrInTest, RenameUserOnSuccess)
 
     UserInfoMap userInfo = getUserInfo(newUsername);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-user");
-    // "ssh" (ManagerConsole) is restricted to UID 0, so it is stripped for
-    // this regular user; only "redfish" remains and survives the rename.
+    // "ssh" (ManagerConsole) is restricted to UID 0 and requesting it at
+    // create time is rejected, so this user was created with "redfish" only.
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
                 testing::UnorderedElementsAre("redfish"));
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
@@ -1322,7 +1322,7 @@ TEST_F(UserMgrInTest, RenameUserThrowsInternalFailureIfExecuteUserModifyFails)
 {
     std::string username = "user001";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     std::string newUsername = "user002";
 
     EXPECT_CALL(*this, executeUserRename(testing::StrEq(username),
@@ -1342,8 +1342,8 @@ TEST_F(UserMgrInTest, RenameUserThrowsInternalFailureIfExecuteUserModifyFails)
     // The original user is unchanged
     UserInfoMap userInfo = getUserInfo(username);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-user");
-    // "ssh" (ManagerConsole) is restricted to UID 0, so it was stripped at
-    // create time; only "redfish" remains.
+    // Created with "redfish" only: requesting "ssh" (ManagerConsole) at
+    // create time is rejected for regular users.
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
                 testing::UnorderedElementsAre("redfish"));
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
@@ -1356,7 +1356,7 @@ TEST_F(UserMgrInTest,
 {
     std::string username = "user001";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     std::string newUsername = "user002";
 
     EXPECT_CALL(*this, executeUserRename(testing::StrEq(username),
@@ -1377,8 +1377,8 @@ TEST_F(UserMgrInTest,
     // The original user is updated
     UserInfoMap userInfo = getUserInfo(newUsername);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-user");
-    // "ssh" (ManagerConsole) is restricted to UID 0, so it was stripped at
-    // create time; only "redfish" remains.
+    // Created with "redfish" only: requesting "ssh" (ManagerConsole) at
+    // create time is rejected for regular users.
     EXPECT_THAT(std::get<GroupList>(userInfo["UserGroups"]),
                 testing::UnorderedElementsAre("redfish"));
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
@@ -1400,15 +1400,18 @@ TEST_F(UserMgrInTest, UpdateGroupsAndPrivOnSuccess)
 {
     std::string username = "user001";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
-    // "ssh" (ManagerConsole) is restricted to UID 0, so it is stripped from
-    // the requested groups for this regular user; the remaining groups apply.
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
+    // Update path rejects "ssh" for regular users like the create path.
 #ifdef ENABLE_IPMI
-    EXPECT_NO_THROW(
-        updateGroupsAndPriv(username, {"ipmi", "ssh"}, "priv-admin"));
+    EXPECT_THROW(
+        updateGroupsAndPriv(username, {"ipmi", "ssh"}, "priv-admin"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::RestrictedGroup);
+    EXPECT_NO_THROW(updateGroupsAndPriv(username, {"ipmi"}, "priv-admin"));
 #else
-    EXPECT_NO_THROW(
-        updateGroupsAndPriv(username, {"redfish", "ssh"}, "priv-admin"));
+    EXPECT_THROW(
+        updateGroupsAndPriv(username, {"redfish", "ssh"}, "priv-admin"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::RestrictedGroup);
+    EXPECT_NO_THROW(updateGroupsAndPriv(username, {"redfish"}, "priv-admin"));
 #endif
     UserInfoMap userInfo = getUserInfo(username);
     EXPECT_EQ(std::get<Privilege>(userInfo["UserPrivilege"]), "priv-admin");
@@ -1428,18 +1431,18 @@ TEST_F(UserMgrInTest,
 {
     std::string username = "user001";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     EXPECT_CALL(*this, executeUserModify(testing::StrEq(username), testing::_,
                                          testing::_))
         .WillOnce(testing::Throw(
             sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure()));
 #ifdef ENABLE_IPMI
     EXPECT_THROW(
-        updateGroupsAndPriv(username, {"ipmi", "ssh"}, "priv-admin"),
+        updateGroupsAndPriv(username, {"ipmi"}, "priv-admin"),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
 #else
     EXPECT_THROW(
-        updateGroupsAndPriv(username, {"ssh"}, "priv-admin"),
+        updateGroupsAndPriv(username, {"redfish"}, "priv-admin"),
         sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure);
 #endif
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
@@ -1586,7 +1589,7 @@ TEST_F(UserMgrInTest, UserEnableOnSuccess)
 {
     std::string username = "user001";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     UserInfoMap userInfo = getUserInfo(username);
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
 
@@ -1618,7 +1621,7 @@ TEST_F(UserMgrInTest, UserEnableThrowsInternalFailureIfExecuteUserModifyFail)
 {
     std::string username = "user001";
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
     UserInfoMap userInfo = getUserInfo(username);
     EXPECT_EQ(std::get<UserEnabled>(userInfo["UserEnabled"]), true);
 
@@ -1927,7 +1930,7 @@ TEST_F(UserMgrInTest, CreateUser2)
     setUpGetUserInfo(userName, enabled);
     setUpDeleteUser(userName);
 
-    std::vector<std::string> groups = {"redfish", "ssh"};
+    std::vector<std::string> groups = {"redfish"};
 
     UserCreateMap props;
     props[UserProperty::GroupNames] = std::move(groups);
@@ -1954,7 +1957,7 @@ TEST_F(UserMgrInTest, CreateUser2WithoutPasswordExpiration)
     setUpGetUserInfo(userName, enabled);
     setUpDeleteUser(userName);
 
-    std::vector<std::string> groups = {"redfish", "ssh"};
+    std::vector<std::string> groups = {"redfish"};
 
     UserCreateMap props;
     props[UserProperty::GroupNames] = std::move(groups);
@@ -1991,7 +1994,7 @@ TEST_F(UserMgrInTest, CreateUser2PasswordExpirationNotSet)
 
     constexpr auto passwordExpiration = getDefaultPasswordExpiration();
 
-    std::vector<std::string> groups = {"redfish", "ssh"};
+    std::vector<std::string> groups = {"redfish"};
 
     UserCreateMap props;
     props[UserProperty::GroupNames] = std::move(groups);
@@ -2042,7 +2045,7 @@ TEST_F(UserMgrInTest, CreateUser2UnexpiringPassword)
     setUpGetUserInfo(userName, enabled);
     setUpDeleteUser(userName);
 
-    std::vector<std::string> groups = {"redfish", "ssh"};
+    std::vector<std::string> groups = {"redfish"};
 
     UserCreateMap props;
     props[UserProperty::GroupNames] = std::move(groups);
@@ -2084,7 +2087,7 @@ TEST_F(UserMgrInTest, CreateUser2Rename)
                                          testing::StrEq(newUserName)))
         .Times(1);
 
-    std::vector<std::string> groups = {"redfish", "ssh"};
+    std::vector<std::string> groups = {"redfish"};
 
     UserCreateMap props;
     props[UserProperty::GroupNames] = std::move(groups);
@@ -2121,7 +2124,7 @@ TEST_F(UserMgrInTest, CreateUser2PasswordExpirationFail)
 
     setUpDeleteUser(userName);
 
-    std::vector<std::string> groups = {"redfish", "ssh"};
+    std::vector<std::string> groups = {"redfish"};
 
     UserCreateMap props;
     props[UserProperty::GroupNames] = std::move(groups);
@@ -2334,15 +2337,26 @@ TEST_F(UserMgrInTest, CheckVersionComparesDefaultAndWorking)
     removeFile(noVer);
 }
 
-TEST_F(UserMgrInTest, FilterRestrictedGroupsRemovesOnlyWhenPresent)
+TEST_F(UserMgrInTest, ThrowForRestrictedGroupsRejectsOnlyWhenPresent)
 {
-    std::vector<std::string> groups = {"ssh", "redfish", "ipmi"};
-    // Group present -> removed.
-    filterRestrictedGroups("someUser", groups, "redfish");
-    EXPECT_THAT(groups, testing::UnorderedElementsAre("ssh", "ipmi"));
-    // Group absent -> unchanged.
-    filterRestrictedGroups("someUser", groups, "not-a-member");
-    EXPECT_THAT(groups, testing::UnorderedElementsAre("ssh", "ipmi"));
+    const std::vector<std::string> groups = {"ssh", "redfish", "ipmi"};
+    // Group present -> rejected rather than silently dropped.
+    EXPECT_THROW(
+        throwForRestrictedGroups("someUser", groups, "redfish"),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::RestrictedGroup);
+    // Group absent -> accepted.
+    EXPECT_NO_THROW(
+        throwForRestrictedGroups("someUser", groups, "not-a-member"));
+}
+
+TEST_F(UserMgrInTest, CreateUserWithRestrictedGroupThrows)
+{
+    std::string username = "user001";
+    // "ssh" for a regular user must fail the whole create.
+    EXPECT_THROW(
+        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true),
+        sdbusplus::xyz::openbmc_project::User::Common::Error::RestrictedGroup);
+    EXPECT_FALSE(isUserExist(username));
 }
 
 // Note: isRootPrivilegeUser() and getUsersInGroup() are private members of
@@ -2490,7 +2504,7 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetFalseThrowsNotAllowed)
 {
     const std::string userName = getNextUserName();
     EXPECT_NO_THROW(
-        UserMgr::createUser(userName, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(userName, {"redfish"}, "priv-user", true));
 
     EXPECT_THROW(UserMgr::userPasswordExpired(userName, false), NotAllowed);
 
@@ -2503,7 +2517,7 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueUidZeroThrowsNotAllowed)
 {
     const std::string userName = getNextUserName();
     EXPECT_NO_THROW(
-        UserMgr::createUser(userName, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(userName, {"redfish"}, "priv-user", true));
 
     EXPECT_CALL(*this, getSystemUser(testing::StrEq(userName)))
         .WillOnce([]() {
@@ -2528,7 +2542,7 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueSuccess)
 {
     const std::string userName = getNextUserName();
     EXPECT_NO_THROW(
-        UserMgr::createUser(userName, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(userName, {"redfish"}, "priv-user", true));
 
     EXPECT_THROW(UserMgr::userPasswordExpired(userName, true), InternalFailure);
 
