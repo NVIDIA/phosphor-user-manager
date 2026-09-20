@@ -73,6 +73,17 @@ struct SystemUserInfo
     struct passwd pwd;
     std::vector<char> buffer;
 };
+
+/** @struct SystemGroupInfo
+ *  @brief Holds the result of a getgrnam_r() lookup.
+ *         The buffer member owns the storage that the group fields point into.
+ */
+struct SystemGroupInfo
+{
+    struct group grp;
+    std::vector<char> buffer;
+};
+
 extern uint8_t maxPasswdLength; // MAX_PASSWORD_LENGTH;
 inline constexpr size_t maxSystemGroupNameLength = 32;
 inline constexpr size_t maxSystemGroupCount = 64;
@@ -536,6 +547,24 @@ class UserMgr : public Ifaces
     virtual std::unique_ptr<struct SystemUserInfo> getSystemUser(
         const std::string& userName) const;
 
+    /** @brief look up a system group by name, growing the getgrnam_r() buffer
+     *         as needed for groups with many members.
+     *
+     *  sysconf(_SC_GETGR_R_SIZE_MAX) is only an initial hint; getgrnam_r() can
+     *  still return ERANGE for large groups, so the buffer is grown and the
+     *  lookup retried until it fits or a generous safety cap is reached.
+     *
+     *  @param[in]  groupName - name of the group
+     *  @param[out] lookupStatus - if non-null, receives the final getgrnam_r()
+     *              status. It is 0 when the group was found or is genuinely
+     *              absent, and the failing errno otherwise (e.g. ERANGE).
+     *
+     *  @return - unique pointer of SystemGroupInfo struct if the group exists,
+     *            nullptr if it does not exist or could not be looked up.
+     */
+    std::unique_ptr<struct SystemGroupInfo> getSystemGroup(
+        const std::string& groupName, int* lookupStatus = nullptr) const;
+
     /** @brief check for user presence
      *  method to check for user existence
      *
@@ -852,6 +881,10 @@ class UserMgr : public Ifaces
      */
     std::optional<int> getFileVersion(std::ifstream& file);
 
+  protected:
+    /** @brief groups manager container */
+    std::vector<std::string> groupsMgr;
+
   private:
     /** @brief sdbusplus handler */
     sdbusplus::bus_t& bus;
@@ -864,9 +897,6 @@ class UserMgr : public Ifaces
     /** @brief privilege manager container */
     const std::vector<std::string> privMgr = {"priv-admin", "priv-operator",
                                               "priv-user", "priv-noaccess"};
-
-    /** @brief groups manager container */
-    std::vector<std::string> groupsMgr;
 
     /** @brief map container to hold users object */
 
@@ -982,6 +1012,7 @@ class UserMgr : public Ifaces
      * quality requirements.
      */
     std::string pwQualityConfigFile;
+    std::string loginDefsFile;
 
   private:
     void createUserImpl(const std::string& userName, UserCreateMap props);
@@ -992,7 +1023,9 @@ class UserMgr : public Ifaces
     void deleteUserImpl(const std::string& userName);
 
   public:
-    // These functions need to be public for tests
+    // These functions & constants need to be public for tests
+
+    static constexpr long int passMaxDaysFallback = 99999;
 
     /** @brief value of a password maximum age indicating that the password does
      *  not expire
@@ -1020,10 +1053,23 @@ class UserMgr : public Ifaces
         return std::numeric_limits<uint64_t>::max();
     }
 
+    /** @brief read PASS_MAX_DAYS from /etc/login.defs
+     *  Parses loginDefsFile for the PASS_MAX_DAYS key. Returns the value
+     *  found, or passMaxDaysFallback if the file is missing or the key is
+     *  absent.
+     **/
+    long int readLoginDefsPassMaxDays() const;
+
   protected:
     // This function needs to be virtual and protected for tests
     virtual void getShadowData(const std::string& userName,
                                struct spwd& spwd) const;
+
+    /* Cached value of PASS_MAX_DAYS read from loginDefsFile at startup.
+    // Not refreshed if the file changes at runtime; this is consistent
+    // with how the other PAM policy values are handled (initializeAccountPolicy
+    // reads them once at construction and caches them) */
+    long int loginDefsPassMaxDays;
 };
 
 } // namespace user

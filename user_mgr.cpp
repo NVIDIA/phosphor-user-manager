@@ -93,6 +93,7 @@ static constexpr const char* previousDefaultPWQualityConfigFilesDirectory =
     "/etc/security/pwquality.conf.d";
 static constexpr const char* firstBootCheckPath =
     "/etc/dropbear/dropbear_rsa_host_key";
+static constexpr const char* defaultLoginDefsFile = "/etc/login.defs";
 
 // Object Manager related
 static constexpr const char* ldapMgrObjBasePath =
@@ -345,6 +346,66 @@ std::unique_ptr<struct SystemUserInfo> UserMgr::getSystemUser(
         return res;
     }
 
+    return nullptr;
+}
+
+std::unique_ptr<struct SystemGroupInfo> UserMgr::getSystemGroup(
+    const std::string& groupName, int* lookupStatus) const
+{
+    auto buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+    if (buflen <= 0)
+    {
+        // sysconf() only offers an initial hint; use a sane default when it is
+        // unknown. getgrnam_r() may still need more room (handled below).
+        buflen = 1024;
+    }
+
+    auto res = std::make_unique<struct SystemGroupInfo>();
+    res->buffer.resize(buflen);
+    struct group* grpPtr = nullptr;
+
+    // Groups with many members can need far more space than the sysconf() hint,
+    // in which case getgrnam_r() returns ERANGE. Grow the buffer and retry
+    // until the entry fits or a generous safety cap is reached, so a large
+    // group can never be misreported as missing.
+    constexpr size_t maxGroupBufferLength = 1024 * 1024;
+    int status = getgrnam_r(groupName.c_str(), &res->grp, res->buffer.data(),
+                            res->buffer.size(), &grpPtr);
+    while (status == ERANGE && res->buffer.size() < maxGroupBufferLength)
+    {
+        res->buffer.resize(res->buffer.size() * 2);
+        lg2::debug(
+            "Increased getgrnam_r() buffer for group '{GROUP}' to {SIZE}",
+            "GROUP", groupName, "SIZE", res->buffer.size());
+        status = getgrnam_r(groupName.c_str(), &res->grp, res->buffer.data(),
+                            res->buffer.size(), &grpPtr);
+    }
+
+    if (lookupStatus != nullptr)
+    {
+        *lookupStatus = status;
+    }
+
+    // On success getgrnam_r() returns 0 and sets grpPtr to &res->grp. A 0
+    // return with a null grpPtr means the group genuinely does not exist.
+    if (status == 0 && grpPtr == &res->grp)
+    {
+        return res;
+    }
+
+    if (status == ERANGE)
+    {
+        lg2::error(
+            "Group '{GROUP}' info exceeds {SIZE} bytes; cannot look it up",
+            "GROUP", groupName, "SIZE", maxGroupBufferLength);
+    }
+    else if (status != 0)
+    {
+        lg2::error("Failed to look up group '{GROUP}': {STATUS}", "GROUP",
+                   groupName, "STATUS", status);
+    }
+    // status == 0 with a null grpPtr -> group not found; the caller decides
+    // whether that is an error worth logging.
     return nullptr;
 }
 
@@ -901,6 +962,7 @@ void UserMgr::updateGroupsAndPriv(const std::string& userName,
     {
         throwForUserNameConstraints(userName, groupNames);
         throwForMaxGrpUserCount(groupNames);
+        userPasswordExpired(userName, true);
     }
 
     std::string groups = getCSVFromVector(groupNames);
@@ -1486,25 +1548,19 @@ bool UserMgr::isUserEnabled(const std::string& userName)
 std::vector<std::string> UserMgr::getUsersInGroup(const std::string& groupName)
 {
     std::vector<std::string> usersInGroup;
-    // Should be more than enough to get the pwd structure.
-    std::array<char, 4096> buffer{};
-    struct group grp;
-    struct group* resultPtr = nullptr;
 
-    int status = getgrnam_r(groupName.c_str(), &grp, buffer.data(),
-                            buffer.max_size(), &resultPtr);
-
-    if (!status && (&grp == resultPtr))
-    {
-        for (; *(grp.gr_mem) != NULL; ++(grp.gr_mem))
-        {
-            usersInGroup.emplace_back(*(grp.gr_mem));
-        }
-    }
-    else
+    auto groupInfo = getSystemGroup(groupName);
+    if (groupInfo == nullptr)
     {
         lg2::error("Group '{GROUPNAME}' not found", "GROUPNAME", groupName);
         // Don't throw error, just return empty userList - fallback
+        return usersInGroup;
+    }
+
+    for (char** mem = groupInfo->grp.gr_mem; mem != nullptr && *mem != nullptr;
+         ++mem)
+    {
+        usersInGroup.emplace_back(*mem);
     }
     return usersInGroup;
 }
@@ -1584,62 +1640,24 @@ gid_t UserMgr::getPrimaryGroup(const std::string& userName) const
 bool UserMgr::isGroupMember(const std::string& userName, gid_t primaryGid,
                             const std::string& groupName) const
 {
-    static auto buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
-    if (buflen <= 0)
+    auto groupInfo = getSystemGroup(groupName);
+    if (groupInfo == nullptr)
     {
-        // Use a default size if there is no hard limit suggested by sysconf()
-        buflen = 1024;
+        return false;
     }
 
-    struct group grp;
-    struct group* grpPtr = nullptr;
-    std::vector<char> buffer(buflen);
-
-    auto status = getgrnam_r(groupName.c_str(), &grp, buffer.data(),
-                             buffer.size(), &grpPtr);
-
-    // Groups with a lot of members may require a buffer of bigger size than
-    // suggested by _SC_GETGR_R_SIZE_MAX.
-    // 32K should be enough for about 2K members.
-    constexpr auto maxBufferLength = 32 * 1024;
-    while (status == ERANGE && buflen < maxBufferLength)
+    const struct group& grp = groupInfo->grp;
+    if (primaryGid == grp.gr_gid)
     {
-        buflen *= 2;
-        buffer.resize(buflen);
-
-        lg2::debug("Increase buffer for getgrnam_r() to {SIZE}", "SIZE",
-                   buflen);
-
-        status = getgrnam_r(groupName.c_str(), &grp, buffer.data(),
-                            buffer.size(), &grpPtr);
+        return true;
     }
 
-    // On success, getgrnam_r() returns zero, and set *grpPtr to grp.
-    // If no matching group record was found, these functions return 0
-    // and store NULL in *grpPtr
-    if (!status && (&grp == grpPtr))
+    for (auto i = 0; grp.gr_mem && grp.gr_mem[i]; ++i)
     {
-        if (primaryGid == grp.gr_gid)
+        if (userName == grp.gr_mem[i])
         {
             return true;
         }
-
-        for (auto i = 0; grp.gr_mem && grp.gr_mem[i]; ++i)
-        {
-            if (userName == grp.gr_mem[i])
-            {
-                return true;
-            }
-        }
-    }
-    else if (status == ERANGE)
-    {
-        lg2::error("Group info of {GROUP} requires too much memory", "GROUP",
-                   groupName);
-    }
-    else
-    {
-        lg2::error("Group {GROUP} does not exist", "GROUP", groupName);
     }
 
     return false;
@@ -2039,7 +2057,9 @@ UserMgr::UserMgr(sdbusplus::bus_t& bus, const char* path) :
     Ifaces(bus, path, Ifaces::action::defer_emit), bus(bus), path(path),
     serializer(mfaConfPath), faillockConfigFile(defaultFaillockConfigFile),
     pwHistoryConfigFile(defaultPWHistoryConfigFile),
-    pwQualityConfigFile(workingPWQualityConfigFile)
+    pwQualityConfigFile(workingPWQualityConfigFile),
+    loginDefsFile(defaultLoginDefsFile),
+    loginDefsPassMaxDays(passMaxDaysFallback)
 {
     /* Left empty intentionally */
 }
@@ -2071,6 +2091,7 @@ void UserMgr::initialize()
     std::sort(groupsMgr.begin(), groupsMgr.end());
     UserMgrIface::allGroups(groupsMgr);
     initializeAccountPolicy();
+    loginDefsPassMaxDays = readLoginDefsPassMaxDays();
     load();
     initUserObjects();
     // emit the signal
@@ -2460,6 +2481,46 @@ void UserMgr::executeUserPasswordExpiration(const char* userName,
                std::to_string(passwordAge).c_str());
 }
 
+long int UserMgr::readLoginDefsPassMaxDays() const
+{
+    std::ifstream f(loginDefsFile);
+    if (!f.is_open())
+    {
+        lg2::error("Failed to open login.defs file {FILENAME}", "FILENAME",
+                   loginDefsFile);
+        return passMaxDaysFallback;
+    }
+
+    std::string line;
+    while (std::getline(f, line))
+    {
+        // strip inline comments
+        auto commentPos = line.find('#');
+        if (commentPos != std::string::npos)
+        {
+            line = line.substr(0, commentPos);
+        }
+
+        std::istringstream iss(line);
+        std::string key;
+        long int value;
+        if ((iss >> key >> value) && key == "PASS_MAX_DAYS")
+        {
+            if (value <= 0)
+            {
+                lg2::warning("PASS_MAX_DAYS value {VALUE} in {FILENAME} is not "
+                             "positive, using fallback {FALLBACK}",
+                             "VALUE", value, "FILENAME", loginDefsFile,
+                             "FALLBACK", passMaxDaysFallback);
+                return passMaxDaysFallback;
+            }
+            return value;
+        }
+    }
+
+    return passMaxDaysFallback;
+}
+
 void UserMgr::getShadowData(const std::string& userName,
                             struct spwd& spwd) const
 {
@@ -2492,9 +2553,7 @@ uint64_t UserMgr::getPasswordExpiration(const std::string& userName) const
 
     // use default value for maximum password age to check that password
     // expiration was not specified
-    // TODO: this default value might be changed, so it should be obtain
-    // properly instead of hardcoding
-    if (spwd.sp_max == 99999)
+    if (spwd.sp_max == loginDefsPassMaxDays)
     {
         return getDefaultPasswordExpiration();
     }

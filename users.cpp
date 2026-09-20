@@ -259,6 +259,10 @@ bool Users::userPasswordExpired() const
 
 bool Users::userPasswordExpired(bool value)
 {
+    if (value && UsersIface::userPasswordExpired())
+    {
+        return true;
+    }
     manager.userPasswordExpired(userName, value);
     return UsersIface::userPasswordExpired(value);
 }

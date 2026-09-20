@@ -568,6 +568,10 @@ ocredit=0
 dcredit=0
 ucredit=0
 )";
+inline constexpr const char* rawLoginDefsConfig = R"(
+# Maximum number of days a password may be used.
+PASS_MAX_DAYS       99999
+)";
 } // namespace
 
 void dumpStringToFile(const std::string& str, const std::string& filePath)
@@ -629,11 +633,24 @@ class UserMgrInTest : public testing::Test, public UserMgr
                 close(fd);
             }
         }
+        {
+            tempLoginDefsFile = tempFilePath;
+            int fd = mkstemp(tempLoginDefsFile.data());
+            EXPECT_NE(-1, fd);
+            EXPECT_NO_THROW(
+                dumpStringToFile(rawLoginDefsConfig, tempLoginDefsFile));
+            if (fd != -1)
+            {
+                close(fd);
+            }
+        }
 
         // Set config files to test files
         faillockConfigFile = tempFaillockConfigFile;
         pwHistoryConfigFile = tempPWHistoryConfigFile;
         pwQualityConfigFile = tempPWQualityConfigFile;
+        loginDefsFile = tempLoginDefsFile;
+        loginDefsPassMaxDays = readLoginDefsPassMaxDays();
 
         ON_CALL(*this, executeUserAdd(testing::_, testing::_, testing::_,
                                       testing::Eq(true)))
@@ -685,6 +702,9 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
         ON_CALL(*this, executeGroupDeletion).WillByDefault(testing::Return());
 
+        ON_CALL(*this, userPasswordExpired(testing::_, testing::_))
+            .WillByDefault(testing::Return());
+
         ON_CALL(*this, groupExistsOnSystem(testing::_))
             .WillByDefault(testing::Return(false));
     }
@@ -707,6 +727,7 @@ class UserMgrInTest : public testing::Test, public UserMgr
         EXPECT_NO_THROW(removeFile(tempFaillockConfigFile));
         EXPECT_NO_THROW(removeFile(tempPWHistoryConfigFile));
         EXPECT_NO_THROW(removeFile(tempPWQualityConfigFile));
+        EXPECT_NO_THROW(removeFile(tempLoginDefsFile));
     }
 
     MOCK_METHOD(void, executeUserAdd, (const char*, const char*, bool, bool),
@@ -751,6 +772,9 @@ class UserMgrInTest : public testing::Test, public UserMgr
     MOCK_METHOD(std::unique_ptr<struct SystemUserInfo>, getSystemUser,
                 (const std::string& userName), (const, override));
 
+    MOCK_METHOD(void, userPasswordExpired,
+                (const std::string& userName, bool value), (override));
+
   protected:
     static constexpr auto tempFilePath = "/tmp/test-data-XXXXXX";
 
@@ -758,6 +782,7 @@ class UserMgrInTest : public testing::Test, public UserMgr
     std::string tempFaillockConfigFile;
     std::string tempPWHistoryConfigFile;
     std::string tempPWQualityConfigFile;
+    std::string tempLoginDefsFile;
 
     void setUpCreateUser(const std::string& userName, bool enabled)
     {
@@ -797,6 +822,13 @@ class UserMgrInTest : public testing::Test, public UserMgr
 
         EXPECT_CALL(*this, executeUserDelete(testing::StrEq(userName)))
             .Times(1);
+    }
+
+    // Set groupsMgr and keep the D-Bus allGroups property in sync.
+    void setGroupsMgr(std::vector<std::string>&& groups)
+    {
+        groupsMgr = std::move(groups);
+        UserMgrIface::allGroups(groupsMgr);
     }
 };
 
@@ -1116,6 +1148,7 @@ TEST_F(UserMgrInTest,
 
 TEST_F(UserMgrInTest, CreateUserThrowsInternalFailureWhenExecuteUserAddFails)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "whatever";
     EXPECT_CALL(*this, executeUserAdd)
         .WillOnce(testing::Throw(
@@ -1136,6 +1169,7 @@ TEST_F(UserMgrInTest, CreateUserThrowsInternalFailureWhenExecuteUserAddFails)
 TEST_F(UserMgrInTest,
        CreateUserThrowsInternalFailureWhenExecuteUserAddPartiallyFails)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "whatever";
     EXPECT_CALL(*this, executeUserAdd)
         .WillOnce(testing::Throw(
@@ -1158,6 +1192,7 @@ TEST_F(UserMgrInTest,
 
 TEST_F(UserMgrInTest, DeleteUserThrowsInternalFailureWhenExecuteUserDeleteFails)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1178,6 +1213,7 @@ TEST_F(UserMgrInTest, DeleteUserThrowsInternalFailureWhenExecuteUserDeleteFails)
 
 TEST_F(UserMgrInTest, DeleteUserSuccessWhenExecuteUserSucceedsWithError)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1194,6 +1230,7 @@ TEST_F(UserMgrInTest, DeleteUserSuccessWhenExecuteUserSucceedsWithError)
 TEST_F(UserMgrInTest,
        DeleteUserSucceedsEvenWhenExecuteUserClearFailRecordsFails)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     const char* username = "user";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1213,6 +1250,7 @@ TEST_F(UserMgrInTest,
 
 TEST_F(UserMgrInTest, DeleteUserThrowsNotAllowedWhenUidZero)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     const std::string username = "sysadmin";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-admin", true));
@@ -1237,6 +1275,7 @@ TEST_F(UserMgrInTest, DeleteUserThrowsNotAllowedWhenUidZero)
 
 TEST_F(UserMgrInTest, DeleteUserDoesNotThrowNotAllowedWhenUidNonZero)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     const std::string username = "regularuser";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1252,6 +1291,7 @@ TEST_F(UserMgrInTest, DeleteUserDoesNotThrowNotAllowedWhenUidNonZero)
 
 TEST_F(UserMgrInTest, ThrowForInvalidPrivilegeThrowsWhenPrivilegeIsInvalid)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     EXPECT_THROW(
         throwForInvalidPrivilege("whatever"),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
@@ -1273,19 +1313,22 @@ TEST_F(UserMgrInTest, ThrowForInvalidPrivilegeNoThrowWhenPrivilegeIsValid)
 
 TEST_F(UserMgrInTest, ThrowForInvalidGroupsThrowsWhenGroupIsInvalid)
 {
+    setGroupsMgr({"redfish", "ssh"});
     EXPECT_THROW(
         throwForInvalidGroups({"whatever"}),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+    // "ipmi" is not in groupsMgr on this simulated image also invalid
     EXPECT_THROW(
-        throwForInvalidGroups({"web"}),
+        throwForInvalidGroups({"ipmi"}),
         sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
 }
 
 TEST_F(UserMgrInTest, ThrowForInvalidGroupsNoThrowWhenGroupIsValid)
 {
-#ifdef ENABLE_IPMI
+    // Simulate a fully installed image with all predefined groups present
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi", "service",
+                  "redfish-hostiface"});
     EXPECT_NO_THROW(throwForInvalidGroups({"ipmi"}));
-#endif
     EXPECT_NO_THROW(throwForInvalidGroups({"ssh"}));
     EXPECT_NO_THROW(throwForInvalidGroups({"redfish"}));
     EXPECT_NO_THROW(throwForInvalidGroups({"hostconsole"}));
@@ -1293,8 +1336,21 @@ TEST_F(UserMgrInTest, ThrowForInvalidGroupsNoThrowWhenGroupIsValid)
     EXPECT_NO_THROW(throwForInvalidGroups({"redfish-hostiface"}));
 }
 
+TEST_F(UserMgrInTest, ThrowForInvalidGroupsNoThrowWhenGroupIsValidNoIpmi)
+{
+    // Simulate a no IPMI image
+    setGroupsMgr({"redfish", "ssh", "hostconsole"});
+    EXPECT_NO_THROW(throwForInvalidGroups({"ssh"}));
+    EXPECT_NO_THROW(throwForInvalidGroups({"redfish"}));
+    EXPECT_NO_THROW(throwForInvalidGroups({"hostconsole"}));
+    EXPECT_THROW(
+        throwForInvalidGroups({"ipmi"}),
+        sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument);
+}
+
 TEST_F(UserMgrInTest, RenameUserOnSuccess)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1320,6 +1376,7 @@ TEST_F(UserMgrInTest, RenameUserOnSuccess)
 
 TEST_F(UserMgrInTest, RenameUserThrowsInternalFailureIfExecuteUserModifyFails)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1354,6 +1411,7 @@ TEST_F(UserMgrInTest, RenameUserThrowsInternalFailureIfExecuteUserModifyFails)
 TEST_F(UserMgrInTest,
        RenameUserThrowsInternalFailureIfExecuteUserModifyPartiallyFails)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1398,6 +1456,7 @@ TEST_F(UserMgrInTest, DefaultUserModifyFailedWithInternalFailure)
 
 TEST_F(UserMgrInTest, UpdateGroupsAndPrivOnSuccess)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1429,6 +1488,7 @@ TEST_F(UserMgrInTest, UpdateGroupsAndPrivOnSuccess)
 TEST_F(UserMgrInTest,
        UpdateGroupsAndPrivThrowsInternalFailureIfExecuteUserModifyFail)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1587,6 +1647,7 @@ TEST_F(UserMgrInTest, AccountUnlockTimeoutOnFailure)
 
 TEST_F(UserMgrInTest, UserEnableOnSuccess)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1604,6 +1665,7 @@ TEST_F(UserMgrInTest, UserEnableOnSuccess)
 
 TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
 {
+    setGroupsMgr({"hostconsole"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"hostconsole"}, "priv-user", true));
@@ -1619,6 +1681,7 @@ TEST_F(UserMgrInTest, CreateDeleteUserSuccessForHostConsole)
 
 TEST_F(UserMgrInTest, UserEnableThrowsInternalFailureIfExecuteUserModifyFail)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     std::string username = "user001";
     EXPECT_NO_THROW(
         UserMgr::createUser(username, {"redfish"}, "priv-user", true));
@@ -1773,10 +1836,13 @@ TEST_F(
 TEST_F(UserMgrInTest, CheckAndThrowForMaxGroupCountOnSuccess)
 {
 #ifdef ENABLE_IPMI
-    constexpr size_t predefGroupCount = 5;
+    setGroupsMgr({"redfish", "ipmi", "ssh", "service", "kvm-ip",
+                  "redfish-hostiface", "hostconsole"});
 #else
-    constexpr size_t predefGroupCount = 4;
+    setGroupsMgr({"redfish", "ssh", "service", "kvm-ip", "redfish-hostiface",
+                  "hostconsole"});
 #endif
+    const size_t predefGroupCount = allGroups().size();
 
     EXPECT_THAT(allGroups().size(), predefGroupCount);
     // we have and additional group "redfish-hostiface" and "service" which are
@@ -1809,15 +1875,19 @@ TEST_F(UserMgrInTest, CheckAndThrowForGroupExist)
     EXPECT_NO_THROW(deleteGroup(groupName));
 }
 
-TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
+TEST_F(UserMgrInTest, AllGroupsReflectsInstalledGroups)
 {
 #ifdef ENABLE_IPMI
     // The groups "redfish-hostiface" and "service" are not exposed to the user
+    setGroupsMgr({"redfish", "ipmi", "ssh", "kvm-ip", "hostconsole", "service",
+                  "redfish-hostiface"});
     EXPECT_THAT(allGroups(),
                 testing::UnorderedElementsAre("redfish", "ipmi", "ssh",
                                               "kvm-ip", "hostconsole"));
 #else
     // The groups "redfish-hostiface" and "service" are not exposed to the user
+    setGroupsMgr({"redfish", "ssh", "kvm-ip", "hostconsole", "service",
+                  "redfish-hostiface"});
     EXPECT_THAT(allGroups(), testing::UnorderedElementsAre(
                                  "redfish", "ssh", "kvm-ip", "hostconsole"));
 #endif
@@ -1825,6 +1895,8 @@ TEST_F(UserMgrInTest, ByDefaultAllGroupsArePredefinedGroups)
 
 TEST_F(UserMgrInTest, AddGroupThrowsIfPreDefinedGroupAdd)
 {
+    setGroupsMgr({"redfish", "ipmi", "ssh", "kvm-ip", "hostconsole", "service",
+                  "redfish-hostiface"});
 #ifdef ENABLE_IPMI
     EXPECT_THROW(
         createGroup("ipmi"),
@@ -1846,6 +1918,8 @@ TEST_F(UserMgrInTest, AddGroupThrowsIfPreDefinedGroupAdd)
 
 TEST_F(UserMgrInTest, DeleteGroupThrowsIfGroupIsNotAllowedToChange)
 {
+    setGroupsMgr({"redfish", "ipmi", "ssh", "kvm-ip", "hostconsole", "service",
+                  "redfish-hostiface"});
 #ifdef ENABLE_IPMI
     EXPECT_THROW(
         deleteGroup("ipmi"),
@@ -1899,7 +1973,7 @@ TEST_F(UserMgrInTest, CheckAndThrowForGroupNotExist)
                      GroupNameDoesNotExist);
 }
 
-TEST(ReadAllGroupsOnSystemTest, OnlyReturnsPredefinedGroups)
+TEST_F(UserMgrInTest, OnlyReturnsPredefinedGroups)
 {
 #ifdef ENABLE_IPMI
     EXPECT_THAT(UserMgr::readAllGroupsOnSystem(),
@@ -1918,6 +1992,7 @@ TEST_F(UserMgrInTest, CreateUser2)
 {
     const std::string userName = getNextUserName();
     const bool enabled = true;
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
 
     // last password change date is today
     // old maximum password age is 5000
@@ -1952,6 +2027,7 @@ TEST_F(UserMgrInTest, CreateUser2WithoutPasswordExpiration)
 {
     const std::string userName = getNextUserName();
     const bool enabled = true;
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
 
     setUpCreateUser(userName, enabled);
     setUpGetUserInfo(userName, enabled);
@@ -1980,6 +2056,7 @@ TEST_F(UserMgrInTest, CreateUser2PasswordExpirationNotSet)
 
     const std::string userName = getNextUserName();
     const bool enabled = true;
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
 
     setUpCreateUser(userName, enabled);
 
@@ -2018,6 +2095,7 @@ TEST_F(UserMgrInTest, CreateUser2UnexpiringPassword)
 
     const std::string userName = getNextUserName();
     const bool enabled = true;
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
 
     // last password change date is today
     const long lastChangeDate =
@@ -2068,6 +2146,7 @@ TEST_F(UserMgrInTest, CreateUser2Rename)
     const std::string userName = getNextUserName();
     const std::string newUserName = getNextUserName();
     const bool enabled = true;
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
 
     // last password change date is 7 days ago
     // old maximum password age is 15
@@ -2113,6 +2192,7 @@ TEST_F(UserMgrInTest, CreateUser2PasswordExpirationFail)
 
     const std::string userName = getNextUserName();
     const bool enabled = true;
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
 
     setUpCreateUser(userName, enabled);
 
@@ -2465,6 +2545,55 @@ TEST_F(UserMgrInTest, ParseFaillockForLockoutCountsAndTimeouts)
     EXPECT_TRUE(parseFaillockForLockout(recentFails));
 }
 
+TEST_F(UserMgrInTest, PasswordExpirationGetPassMaxDays)
+{
+    setGroupsMgr({"ssh"});
+    const std::string userName = getNextUserName();
+
+    EXPECT_CALL(*this, getShadowData(testing::StrEq(userName), _))
+        .WillOnce([](auto, struct spwd& spwd) {
+            spwd.sp_lstchg = 10;
+            spwd.sp_max = UserMgr::passMaxDaysFallback;
+        });
+
+    EXPECT_NO_THROW(UserMgr::createUser(userName, {"ssh"}, "priv-admin", true));
+
+    EXPECT_EQ(getPasswordExpiration(userName),
+              UserMgr::getDefaultPasswordExpiration());
+
+    EXPECT_NO_THROW(UserMgr::deleteUser(userName));
+}
+
+TEST_F(UserMgrInTest, ReadLoginDefsPassMaxDaysReturnsValueFromFile)
+{
+    EXPECT_NO_THROW(dumpStringToFile("PASS_MAX_DAYS 180\n", tempLoginDefsFile));
+    loginDefsFile = tempLoginDefsFile;
+    EXPECT_EQ(readLoginDefsPassMaxDays(), 180);
+}
+
+TEST_F(UserMgrInTest, ReadLoginDefsPassMaxDaysReturnsFallbackIfFileMissing)
+{
+    EXPECT_NO_THROW(removeFile(tempLoginDefsFile));
+    loginDefsFile = tempLoginDefsFile;
+    EXPECT_EQ(readLoginDefsPassMaxDays(), UserMgr::passMaxDaysFallback);
+}
+
+TEST_F(UserMgrInTest, ReadLoginDefsPassMaxDaysReturnsFallbackIfKeyAbsent)
+{
+    EXPECT_NO_THROW(
+        dumpStringToFile("# no PASS_MAX_DAYS here\n", tempLoginDefsFile));
+    loginDefsFile = tempLoginDefsFile;
+    EXPECT_EQ(readLoginDefsPassMaxDays(), UserMgr::passMaxDaysFallback);
+}
+
+TEST_F(UserMgrInTest, ReadLoginDefsPassMaxDaysIgnoresComments)
+{
+    EXPECT_NO_THROW(dumpStringToFile(
+        "# PASS_MAX_DAYS 12345\nPASS_MAX_DAYS 365\n", tempLoginDefsFile));
+    loginDefsFile = tempLoginDefsFile;
+    EXPECT_EQ(readLoginDefsPassMaxDays(), 365);
+}
+
 // ensurePredefinedGroupsExist tests
 
 // No predefined groups exist on the system -> executeGroupCreation called for
@@ -2502,6 +2631,7 @@ TEST_F(UserMgrInTest, EnsurePredefinedGroupsExist_CreationFailureIsSuppressed)
 // UID-0 user is always rejected by throwForUidZero.
 TEST_F(UserMgrInTest, UserPasswordExpiredSetFalseThrowsNotAllowed)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     const std::string userName = getNextUserName();
     EXPECT_NO_THROW(
         UserMgr::createUser(userName, {"redfish"}, "priv-user", true));
@@ -2515,6 +2645,7 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetFalseThrowsNotAllowed)
 
 TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueUidZeroThrowsNotAllowed)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     const std::string userName = getNextUserName();
     EXPECT_NO_THROW(
         UserMgr::createUser(userName, {"redfish"}, "priv-user", true));
@@ -2540,6 +2671,7 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueUidZeroThrowsNotAllowed)
 
 TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueSuccess)
 {
+    setGroupsMgr({"redfish", "ssh", "hostconsole", "ipmi"});
     const std::string userName = getNextUserName();
     EXPECT_NO_THROW(
         UserMgr::createUser(userName, {"redfish"}, "priv-user", true));
@@ -2549,6 +2681,62 @@ TEST_F(UserMgrInTest, UserPasswordExpiredSetTrueSuccess)
     EXPECT_NO_THROW(UserMgr::deleteUser(userName));
 
     eventLoop(5);
+}
+
+TEST_F(TestUserMgr, UserPasswordExpiredSetTrueNoOpIfAlreadyExpired)
+{
+    const std::string userName = getNextUserName();
+
+    createLocalUser(userName, {"redfish", "ssh"}, "priv-user", true);
+
+    auto& user = getUser(userName);
+
+    user.UsersIface::userPasswordExpired(true);
+
+    EXPECT_NO_THROW(user.userPasswordExpired(true));
+}
+
+TEST_F(UserMgrInTest, UpdateGroupsAndPrivIpmiGroupAddedForcesPasswordExpiry)
+{
+    std::vector<std::string> allGroups = {PREDEFINED_GROUPS};
+    bool hasIpmi = std::ranges::find(allGroups, "ipmi") != allGroups.end();
+    if (!hasIpmi)
+    {
+        GTEST_SKIP() << "IPMI group not configured";
+    }
+
+    const std::string username = getNextUserName();
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+
+    EXPECT_CALL(*this, userPasswordExpired(testing::StrEq(username), true))
+        .Times(1);
+
+    EXPECT_NO_THROW(
+        updateGroupsAndPriv(username, {"ipmi", "ssh"}, "priv-user"));
+
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
+}
+
+TEST_F(UserMgrInTest, UpdateGroupsAndPrivIpmiGroupRemovedForcesPasswordExpiry)
+{
+    std::vector<std::string> allGroups = {PREDEFINED_GROUPS};
+    bool hasIpmi = std::ranges::find(allGroups, "ipmi") != allGroups.end();
+    if (!hasIpmi)
+    {
+        GTEST_SKIP() << "IPMI group not configured";
+    }
+
+    const std::string username = getNextUserName();
+    EXPECT_NO_THROW(
+        UserMgr::createUser(username, {"ipmi", "ssh"}, "priv-user", true));
+
+    EXPECT_CALL(*this, userPasswordExpired(testing::StrEq(username), true))
+        .Times(1);
+
+    EXPECT_NO_THROW(updateGroupsAndPriv(username, {"ssh"}, "priv-user"));
+
+    EXPECT_NO_THROW(UserMgr::deleteUser(username));
 }
 
 } // namespace user
