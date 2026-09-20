@@ -2547,7 +2547,7 @@ TEST_F(UserMgrInTest, ParseFaillockForLockoutCountsAndTimeouts)
 
 TEST_F(UserMgrInTest, PasswordExpirationGetPassMaxDays)
 {
-    setGroupsMgr({"ssh"});
+    setGroupsMgr({"redfish"});
     const std::string userName = getNextUserName();
 
     EXPECT_CALL(*this, getShadowData(testing::StrEq(userName), _))
@@ -2556,7 +2556,8 @@ TEST_F(UserMgrInTest, PasswordExpirationGetPassMaxDays)
             spwd.sp_max = UserMgr::passMaxDaysFallback;
         });
 
-    EXPECT_NO_THROW(UserMgr::createUser(userName, {"ssh"}, "priv-admin", true));
+    EXPECT_NO_THROW(
+        UserMgr::createUser(userName, {"redfish"}, "priv-admin", true));
 
     EXPECT_EQ(getPasswordExpiration(userName),
               UserMgr::getDefaultPasswordExpiration());
@@ -2707,15 +2708,17 @@ TEST_F(UserMgrInTest, UpdateGroupsAndPrivIpmiGroupAddedForcesPasswordExpiry)
 
     const std::string username = getNextUserName();
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"redfish", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"redfish"}, "priv-user", true));
 
     EXPECT_CALL(*this, userPasswordExpired(testing::StrEq(username), true))
         .Times(1);
 
     EXPECT_NO_THROW(
-        updateGroupsAndPriv(username, {"ipmi", "ssh"}, "priv-user"));
+        updateGroupsAndPriv(username, {"ipmi", "redfish"}, "priv-user"));
 
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
+
+    eventLoop(5);
 }
 
 TEST_F(UserMgrInTest, UpdateGroupsAndPrivIpmiGroupRemovedForcesPasswordExpiry)
@@ -2729,14 +2732,16 @@ TEST_F(UserMgrInTest, UpdateGroupsAndPrivIpmiGroupRemovedForcesPasswordExpiry)
 
     const std::string username = getNextUserName();
     EXPECT_NO_THROW(
-        UserMgr::createUser(username, {"ipmi", "ssh"}, "priv-user", true));
+        UserMgr::createUser(username, {"ipmi", "redfish"}, "priv-user", true));
 
     EXPECT_CALL(*this, userPasswordExpired(testing::StrEq(username), true))
         .Times(1);
 
-    EXPECT_NO_THROW(updateGroupsAndPriv(username, {"ssh"}, "priv-user"));
+    EXPECT_NO_THROW(updateGroupsAndPriv(username, {"redfish"}, "priv-user"));
 
     EXPECT_NO_THROW(UserMgr::deleteUser(username));
+
+    eventLoop(5);
 }
 
 } // namespace user
