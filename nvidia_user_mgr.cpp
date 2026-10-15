@@ -54,16 +54,6 @@ static constexpr const char* dropbearConfigFile = "/etc/default/dropbear";
 static constexpr const char* consoleDropbearEnvFile =
     "/etc/obmc-console/dropbear.env";
 
-// systemd D-Bus related
-static constexpr const char* systemdService = "org.freedesktop.systemd1";
-static constexpr const char* systemdObjPath = "/org/freedesktop/systemd1";
-static constexpr const char* systemdMgrInterface =
-    "org.freedesktop.systemd1.Manager";
-static constexpr const char* systemdUnitInterface =
-    "org.freedesktop.systemd1.Unit";
-static constexpr const char* dbusPropertiesInterface =
-    "org.freedesktop.DBus.Properties";
-
 /** @brief Reads configFile and returns true if the -s flag
  *  (disable password authentication) is present in DROPBEAR_EXTRA_ARGS.
  */
@@ -268,18 +258,6 @@ std::vector<UserMgr::AuthenticationMethod> UserMgr::sshPreferredAuthentication(
         !setDropbearPasswordAuthFlag(consoleDropbearEnvFile,
                                      disablePasswordAuth))
     {
-        elog<InternalFailure>();
-    }
-    try
-    {
-        auto startCall = bus.new_method_call(
-            systemdService, systemdObjPath, systemdMgrInterface, "RestartUnit");
-        startCall.append("dropbear.socket", "replace");
-        bus.call(startCall);
-    }
-    catch (const sdbusplus::exception_t& e)
-    {
-        lg2::error("Failed to start/restart dropbear.socket: {ERR}", "ERR", e);
         elog<InternalFailure>();
     }
     return NvidiaAccountPolicyIface::sshPreferredAuthentication(value);
